@@ -1,0 +1,15 @@
+body {
+    background-color: #f8f9fa; /* Light gray background */
+}
+.login-container {
+    margin-top: 100px; /* Top margin for vertical centering */
+}
+.card {
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+/* Error Message Styling */
+#error-message {
+    display: none;
+}
