@@ -6,8 +6,27 @@ use surrealdb::Surreal;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BeatMap {
-    author: String,
     song: String,
+    artist: String,
+    charter: String,
+    difficulty: f32,
+    description: String,
+    artistList: String,
+    image: Option<String>,
+    upvoted_by: Vec<Thing>,
+    download: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Upvoted {
+    #[serde(rename = "in")]
+    in_: Thing,
+    out: Thing
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct User {
+
 }
 
 #[derive(Debug, Deserialize)]
