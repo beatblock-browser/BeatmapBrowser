@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let site = Static::new(Path::new("backend/site/"));
     let db = connect().await?;
 
-    let addr: SocketAddr = ([127, 0, 0, 1], 3000).into();
+    let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
     let listener = TcpListener::bind(addr)
         .await
         .expect("Failed to create TCP listener");
