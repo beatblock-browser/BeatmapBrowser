@@ -18,6 +18,9 @@ surrealdb = "2.0.1"
 reqwest = "0.12.7"
 
 image = "0.25.2"
+itertools = "0.13.0"
+
+chrono = { version = "0.4.38", features = ["serde"] }
 
 # Serialization
 serde = { version = "1.0.210", features = ["derive"] }
