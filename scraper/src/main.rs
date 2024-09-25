@@ -5,15 +5,19 @@ use std::fs::File;
 use std::io::{Cursor, Read, Write};
 use std::path::PathBuf;
 use std::{env, fs};
+use std::time::{Instant, SystemTime};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use image::{ImageFormat, ImageReader};
 use surrealdb::engine::remote::ws::Ws;
 use surrealdb::opt::auth::Root;
 use surrealdb::sql::Operator::NoneInside;
+use surrealdb::sql::Thing;
 use surrealdb::Surreal;
 use unrar::Archive;
 use urlencoding::decode;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
+use itertools::Itertools;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -32,6 +36,7 @@ async fn main() -> Result<(), Error> {
 
     let folder = env::args().nth(1).expect("No folder provided!");
     let regex = Regex::new("(<a href=[^>]+)+").unwrap();
+    let avatar_regex = Regex::new("(https://cdn.discordapp.com/avatars/\\d*/)+").unwrap();
     let mut missed = Vec::new();
     for level in fs::read_dir(folder)? {
         let level = level?;
@@ -116,63 +121,17 @@ async fn main() -> Result<(), Error> {
                 charter: data.metadata.charter,
                 difficulty: data.metadata.difficulty,
                 description: data.metadata.description,
-                artistList: data.metadata.artistList,
+                artist_list: data.metadata.artistList,
                 image: image.map(|inner| PathBuf::from(inner).iter().last().unwrap().to_str().unwrap().to_string()),
                 download: path.iter().last().unwrap().to_str().unwrap().to_string(),
+                upvotes: avatar_regex.find_iter(&*file).into_iter().map(|value| value.as_str()).unique().count() as u64,
+                upload_date: DateTime::from(SystemTime::now())
             };
             println!("{}", beatmap.download.len());
             let record: Option<BeatMap> = db.create("beatmaps").content(beatmap).await?;
         }
     }
 
-    Ok(())
-}
-
-
-#[tokio::main]
-async fn old_main() -> Result<(), Error> {
-    // Connect to the server
-    let db = Surreal::new::<Ws>("127.0.0.1:8000").await?;
-
-    // Signin as a namespace, database, or root user
-    db.signin(Root {
-        username: "root",
-        password: "root",
-    })
-        .await?;
-
-    // Select a specific namespace / database
-    db.use_ns("beatblock").use_db("beatblock").await?;
-
-    for level in fs::read_dir(env::current_dir().unwrap().join("output"))? {
-        let level = level?;
-        if level.file_type()?.is_dir() || level.path().ends_with(".png") {
-            continue;
-        }
-
-        println!("Trying {:?}", level.path());
-        let (data, image, download) = match read_zip(level.path()) {
-            Ok(result) => result,
-            Err(error) => {
-                println!("Error reading zip: {:?}", error);
-                continue;
-            }
-        };
-
-        let beatmap = BeatMap {
-            song: data.metadata.songName,
-            artist: data.metadata.artist,
-            charter: data.metadata.charter,
-            difficulty: data.metadata.difficulty,
-            description: data.metadata.description,
-            artistList: data.metadata.artistList,
-            image: image.map(|inner| PathBuf::from(level.path().to_str().unwrap().replace(".zip", ".png"))
-                .iter().last().unwrap().to_str().unwrap().to_string()),
-            download: level.path().iter().last().unwrap().to_str().unwrap().to_string(),
-        };
-        println!("Got {}", beatmap.song);
-        let record: Option<BeatMap> = db.create("beatmaps").content(beatmap).await?;
-    }
     Ok(())
 }
 
@@ -305,7 +264,10 @@ pub struct BeatMap {
     charter: String,
     difficulty: f32,
     description: String,
-    artistList: String,
+    artist_list: String,
     image: Option<String>,
     download: String,
+    #[serde(default)]
+    upvotes: u64,
+    upload_date: DateTime<Utc>
 }

@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::opt::auth::Root;
@@ -6,15 +7,17 @@ use surrealdb::Surreal;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BeatMap {
-    song: String,
-    artist: String,
-    charter: String,
-    difficulty: f32,
-    description: String,
-    artistList: String,
-    image: Option<String>,
-    upvoted_by: Vec<Thing>,
-    download: String,
+    pub song: String,
+    pub artist: String,
+    pub charter: String,
+    pub difficulty: f32,
+    pub description: String,
+    pub artist_list: String,
+    pub image: Option<String>,
+    pub download: String,
+    pub upvotes: u64,
+    pub upload_date: DateTime<Utc>,
+    pub id: Thing
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,7 +29,19 @@ pub struct Upvoted {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct User {
+    songs: Vec<Thing>,
+    upvoted: Vec<Thing>,
+    account_type: AccountType
+}
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum AccountType {
+    Google(GoogleAccount)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GoogleAccount {
+    uid: String
 }
 
 #[derive(Debug, Deserialize)]

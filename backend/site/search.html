@@ -20,6 +20,7 @@
         $(document).ready(function () {
             $('#navbar').load('navbar.html');
             $('#searchbar').load('searchbar.html');
+            $('#search-result-template').load('search_result.html');
         });
     </script>
 </head>
@@ -38,7 +39,7 @@
     </div>
 
     <!-- Search Results Container -->
-    <div id="search-results" class="row gy-4">
+    <div id="search-results" class="row g-4">
         <!-- Search results will be inserted here -->
     </div>
 
@@ -52,34 +53,7 @@
 <!-- Main Content End -->
 
 <!-- Search Result Template -->
-<template id="search-result-template">
-    <div class="col-md-6">
-        <div class="card custom-card text-white">
-            <!-- Thumbnail Image as Background -->
-            <img src="https://via.placeholder.com/600x400" class="card-img" alt="Beat Map Thumbnail">
-
-            <!-- Overlay Content -->
-            <div class="card-img-overlay d-flex flex-column justify-content-end overlay-content">
-                <h5 class="card-title">Beat Map Title</h5>
-                <p class="card-text"><strong>Artist:</strong> Artist Name</p>
-                <p class="card-text"><strong>Mapper:</strong> Mapper Name</p>
-                <p class="card-text"><strong>Difficulty:</strong> Easy</p>
-
-                <!-- Buttons Container -->
-                <div class="mt-3 d-flex align-items-center">
-                    <!-- Play Button -->
-                    <a href="#" class="btn btn-primary me-2" download>Play</a>
-
-                    <!-- Upvote Button -->
-                    <button type="button" class="btn btn-outline-light upvote-button d-flex align-items-center justify-content-center">
-                        <i class="bi bi-hand-thumbs-up-fill me-1"></i>
-                        <span class="upvote-count">0</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</template>
+<template id="search-result-template"></template>
 
 <!-- Custom JavaScript to Handle Search Results -->
 <script>
@@ -94,7 +68,7 @@
         // Optional: Change button appearance after upvote
         button.classList.remove('btn-outline-light');
         button.classList.add('btn-success');
-        button.innerHTML = `<i class="bi bi-hand-thumbs-up-fill me-1"></i> ${count}`;
+        button.innerHTML = `<span class="bi bi-hand-thumbs-up-fill"></span> ${count}`;
 
         // Disable the button to prevent multiple upvotes
         button.disabled = true;
@@ -123,7 +97,9 @@
                 throw new Error(`Server error: ${response.status} ${response.statusText}`);
             }
 
-            const beatMaps = await response.json();
+            const searchResult = await response.json();
+            document.getElementById('search-query').textContent = searchResult.query;
+            const beatMaps = searchResult.results;
 
             // Clear previous results
             resultsContainer.innerHTML = '';
@@ -135,6 +111,7 @@
                     // Clone the template
                     const clone = template.content.cloneNode(true);
 
+                    //clone.querySelector('.custom-card').classList.add('col-md-6');
                     // Populate the clone with actual data
                     clone.querySelector('.card-title').textContent = map.song;
                     clone.querySelectorAll('.card-text')[0].innerHTML = `<strong>Artist:</strong> ${map.artist}`;
