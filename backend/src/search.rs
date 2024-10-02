@@ -1,3 +1,4 @@
+use anyhow::Error;
 use crate::database::BeatMap;
 use crate::search::SearchError::QueryError;
 use hyper::StatusCode;
@@ -8,17 +9,19 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum SearchError {
-    #[error("Query error")]
+    #[error("Argument error")]
     QueryError(),
     #[error("Database error")]
-    DatabaseError(#[from] surrealdb::Error),
+    DatabaseError(#[from] Error),
+    #[error("Authentication error")]
+    AuthError(),
 }
 
 impl SearchError {
     pub fn get_code(&self) -> StatusCode {
         match self {
             QueryError() => StatusCode::BAD_REQUEST,
-            SearchError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            SearchError::DatabaseError(_) | SearchError::AuthError() => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -46,7 +49,9 @@ pub async fn search_database(query: &str, db: Surreal<Client>) -> Result<SearchR
     };
 
     let mut maps: Vec<BeatMap> = db.query("SELECT * FROM beatmaps WHERE song @@ $query")
-        .bind(("query", arguments.query.clone())).await?.take(0)?;
+        .bind(("query", arguments.query.clone())).await
+        .map_err(|err| SearchError::DatabaseError(err.into()))?
+        .take(0).map_err(|err| SearchError::DatabaseError(err.into()))?;
     maps.sort_by(|first, second| first.upvotes.cmp(&second.upvotes).reverse());
     Ok(SearchResult {
         query: arguments.query,
