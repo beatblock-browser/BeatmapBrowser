@@ -10,6 +10,7 @@ pub struct BeatMap {
     pub song: String,
     pub artist: String,
     pub charter: String,
+    pub charter_uid: Option<String>,
     pub difficulty: f32,
     pub description: String,
     pub artist_list: String,
@@ -21,15 +22,8 @@ pub struct BeatMap {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Upvoted {
-    #[serde(rename = "in")]
-    in_: Thing,
-    out: Thing
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct User {
-    songs: Vec<Thing>,
+    maps: Vec<Thing>,
     upvoted: Vec<Thing>,
     account_type: AccountType
 }
