@@ -34,7 +34,7 @@
         <div class="col-md-6">
             <div id="search-result-template"></div>
             <!-- Upload Form -->
-            <form action="/api/upload" method="POST" enctype="multipart/form-data">
+            <form id="uploadForm" action="/api/upload" method="POST" enctype="multipart/form-data">
                 <!-- BeatMap File Upload -->
                 <div class="mb-3">
                     <label for="beatmap" class="form-label">Upload BeatMap (ZIP format)</label>
@@ -51,13 +51,13 @@
         </div>
     </div>
 </div>
-<script>
+<script type="module">
+    import auth from './authentication.js';
     // Initialize search results on page load
     document.getElementById('uploadForm').addEventListener('submit', function (e) {
         e.preventDefault(); // Prevent the default form submission
 
         const user = auth.currentUser;
-
         if (user) {
             // User is signed in, get the ID token
             user.getIdToken(true).then(function (idToken) {

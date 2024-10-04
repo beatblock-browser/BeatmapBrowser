@@ -18,30 +18,14 @@ pub struct BeatMap {
     pub download: String,
     pub upvotes: u64,
     pub upload_date: DateTime<Utc>,
-    pub id: Thing
+    pub id: Option<Thing>
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct User {
-    maps: Vec<Thing>,
-    upvoted: Vec<Thing>,
-    account_type: AccountType
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum AccountType {
-    Google(GoogleAccount)
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GoogleAccount {
-    uid: String
-}
-
-#[derive(Debug, Deserialize)]
-struct Record {
-    #[allow(dead_code)]
-    id: Thing,
+    pub maps: Vec<Thing>,
+    pub upvoted: Vec<Thing>,
+    pub id: Option<Thing>
 }
 
 pub async fn connect() -> surrealdb::Result<Surreal<Client>> {

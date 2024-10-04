@@ -18,11 +18,14 @@ pub struct LevelMetadata {
     pub charter: String,
     pub difficulty: f32,
     pub description: String,
-    pub songName: String,
+    #[serde(rename = "songName")]
+    pub song_name: String,
+    #[serde(rename = "artistList")]
     #[serde(default)]
-    pub artistList: String,
+    pub artist_list: String,
+    #[serde(rename = "bgData")]
     #[serde(default)]
-    pub bgData: Option<BackgroundData>,
+    pub bg_data: Option<BackgroundData>,
 }
 
 #[derive(Deserialize)]
