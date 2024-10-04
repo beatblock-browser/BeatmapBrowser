@@ -13,20 +13,18 @@ pub enum SearchError {
     QueryError(),
     #[error("Database error")]
     DatabaseError(#[from] Error),
-    #[error("Authentication error")]
-    AuthError(),
 }
 
 impl SearchError {
     pub fn get_code(&self) -> StatusCode {
         match self {
             QueryError() => StatusCode::BAD_REQUEST,
-            SearchError::DatabaseError(_) | SearchError::AuthError() => StatusCode::INTERNAL_SERVER_ERROR,
+            SearchError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SearchArguments {
     pub query: String,
 }
@@ -41,7 +39,7 @@ pub struct SearchResult {
 analyzer:
 DEFINE ANALYZER ascii TOKENIZERS blank FILTERS ascii, lowercase;
 index:
-DEFINE INDEX songName ON TABLE beatmaps FIELDS song SEARCH ANALYZER ascii;
+DEFINE INDEX song_name ON TABLE beatmaps FIELDS song SEARCH ANALYZER ascii;
  */
 pub async fn search_database(query: &str, db: Surreal<Client>) -> Result<SearchResult, SearchError> {
     let Ok(arguments) = serde_urlencoded::from_str::<SearchArguments>(query) else {

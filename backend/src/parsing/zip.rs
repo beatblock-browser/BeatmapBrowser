@@ -13,7 +13,7 @@ pub fn read_zip(file: &mut Vec<u8>) -> Result<FileData, Error> {
     };
     let data: LevelData = serde_json::from_slice(&data)?;
     let mut image = None;
-    if let Some(bg_data) = data.metadata.bgData.as_ref() {
+    if let Some(bg_data) = data.metadata.bg_data.as_ref() {
         if !bg_data.image.is_empty() {
             image = fetch_file(&mut archive, &bg_data.image)?;
         }

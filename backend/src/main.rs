@@ -1,7 +1,6 @@
 mod parsing;
 mod body;
 mod database;
-mod login;
 mod search;
 mod upload;
 
@@ -11,7 +10,7 @@ use crate::search::search_database;
 use crate::upload::upload;
 use anyhow::Error;
 use firebase_auth::FirebaseAuth;
-use http_body_util::Full;
+use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
 use hyper::http::response::Builder;
 use hyper::server::conn::http1;
@@ -74,21 +73,17 @@ async fn handle_request(request: Request<hyper::body::Incoming>, site: Static, d
                     (error.get_code(), error.to_string())
                 }
             })?,
-        (&Method::POST, "/api/upload") => build_request(match upload(request, db, auth).await {
-                Ok(_) => (StatusCode::OK, "Success".to_string()),
+        (&Method::POST, "/api/upload") => match upload(request, db, auth).await {
+                Ok(query) =>  Builder::new().status(StatusCode::SEE_OTHER).header("Location", format!("../search.html?{}", query))
+                    .body(Full::new(Bytes::from("")).into()),
                 Err(error) => {
                     println!("Error: {:?}", error);
-                    (error.get_code(), error.to_string())
+                    build_request((error.get_code(), error.to_string()))
                 }
-            })?,
-        /*(&Method::POST, "/api/login") => build_request(match login(request.uri().query().unwrap_or(""), db, auth).await {
-            Ok(_) => (StatusCode::OK, "Success".to_string()),
-            Err(error) => {
-                println!("Error: {:?}", error);
-                (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
-            }
-        })?,*/
+            }?,
         // Default to static files
-        _ => site.serve(request).await.expect("Failed to serve static file").map(|body| body.into()),
+        _ => {
+            site.serve(request).await.expect("Failed to serve static file").map(|body| body.into())
+        },
     })
 }
