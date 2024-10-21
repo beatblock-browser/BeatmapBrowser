@@ -6,7 +6,7 @@ set -e
 echo "Starting deployment..."
 
 # Pull the latest code
-git pull origin main
+git pull origin master
 
 # Build the application
 cargo build --release
