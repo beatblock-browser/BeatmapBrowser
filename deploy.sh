@@ -5,6 +5,8 @@ set -e
 
 echo "Starting deployment..."
 
+rustup default stable
+
 SSH_KEY="/var/lib/webhook/.ssh/id_rsa"
 
 # Set GIT_SSH_COMMAND to use the specified SSH key
