@@ -212,7 +212,7 @@ Add the hook:
       {
         "match": {
           "type": "value",
-          "value": "refs/heads/main",
+          "value": "refs/heads/master",
           "parameter": {
             "source": "payload",
             "name": "ref"
