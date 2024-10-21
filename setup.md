@@ -296,6 +296,10 @@ sudo chmod 700 /var/lib/webhook/.ssh
 sudo -u webhook ssh-keygen -t rsa -b 4096 -C "webhook@beatblockbrowser.me" -f /var/lib/webhook/.ssh/id_rsa -N ""
 sudo chmod 600 /var/lib/webhook/.ssh/id_rsa
 sudo chmod 644 /var/lib/webhook/.ssh/id_rsa.pub
+sudo mkdir -p /home/webhook
+sudo chown webhook:webhook /home/webhook
+sudo chmod 750 /home/webhook
+sudo usermod -d /home/webhook webhook
 sudo chown -R webhook:webhook /etc/webhook
 sudo chown -R webhook:webhook /home/BeatmapBrowser
 
