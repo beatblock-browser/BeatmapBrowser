@@ -26,12 +26,12 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
+
     let site = Static::new(Path::new("backend/site/"));
     let db = connect().await?;
 
     let firebase_auth = FirebaseAuth::new("beatblockbrowser").await;
-
-    let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
 
     let listener = TcpListener::bind(addr)
         .await
