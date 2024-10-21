@@ -194,7 +194,7 @@ Add the hook:
 [
   {
     "id": "deploy-webhook",
-    "execute-command": "/home/BeatmapBrowser/deploy.sh",
+    "execute-command": "sudo -u webhook /home/BeatmapBrowser/deploy.sh",
     "command-working-directory": "/home/BeatmapBrowser",
     "response-message": "Deploying...",
     "trigger-rule": {
