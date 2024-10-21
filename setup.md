@@ -288,6 +288,7 @@ Now enable it and run the webhook:
 sudo ln -s /etc/nginx/sites-available/webhook.beatblockbrowser.conf /etc/nginx/sites-enabled/
 sudo adduser --system --no-create-home --group webhook
 sudo chown -R webhook:webhook /etc/webhook
+sudo chown -R webhook:webhook /home/BeatmapBrowser
 sudo nano /etc/systemd/system/webhook.service
 `
 
