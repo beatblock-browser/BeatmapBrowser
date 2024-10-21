@@ -3,6 +3,8 @@
 Clone the repo:
 `
 cd /home
+sudo apt-get install git-lfs
+git lfs install
 git clone git@github.com:BigBadE/BeatmapBrowser.git
 `
 
