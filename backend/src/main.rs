@@ -66,8 +66,7 @@ fn build_request(data: (StatusCode, String)) -> Result<Response<EitherBody>, hyp
 }
 
 async fn handle_request(request: Request<hyper::body::Incoming>, site: Static, db: Surreal<Client>, auth: FirebaseAuth) -> Result<Response<EitherBody>, Error> {
-    let start = Instant::now();
-    let result = Ok(match (request.method(), request.uri().path()) {
+    Ok(match (request.method(), request.uri().path()) {
         (&Method::GET, "/api/search") => build_request(match search_database(request.uri().query().unwrap_or(""), db).await {
                 Ok(maps) => (StatusCode::default(), serde_json::to_string(&maps).expect("Failed to serialize maps")),
                 Err(error) => {
@@ -87,9 +86,5 @@ async fn handle_request(request: Request<hyper::body::Incoming>, site: Static, d
         _ => {
             site.serve(request).await.expect("Failed to serve static file").map(|body| body.into())
         },
-    });
-
-    let duration = start.elapsed();
-    println!("Handled request in {:?}", duration);
-    result
+    })
 }
