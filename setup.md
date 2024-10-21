@@ -150,7 +150,7 @@ server {
     add_header Referrer-Policy "no-referrer-when-downgrade";
     add_header Permissions-Policy "geolocation=()";
 
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-qknBYUWz6H/aVERwaZ3Lax0CL8lfFIQUOD46TMdmGWI=' report-simple; style-src 'self' report-simple; font-src 'self'; img-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'self'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests";
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-qknBYUWz6H/aVERwaZ3Lax0CL8lfFIQUOD46TMdmGWI=' https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015 report-simple; style-src 'self' report-simple; font-src 'self'; img-src 'self' data:; connect-src 'self' https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015; frame-src 'self'; object-src 'self'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests";
 
     # Proxy Settings
     location / {

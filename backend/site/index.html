@@ -10,17 +10,7 @@
             crossorigin="anonymous"></script>
     <script src="deps/jquery.min.js"></script>
     <link rel="stylesheet" type="text/css" href="style.css" media="screen"/>
-    <script>
-        /**
-         * Automatically replaces the header id with the header navbar,
-         * and the footer id with the footer.
-         * Prevents me having to write the same code on a bunch of pages.
-         */
-        $(document).ready(function () {
-            $('#navbar').load('navbar.html');
-            $('#searchbar').load('searchbar.html');
-        });
-    </script>
+    <script src="html_inliner.js"></script>
 </head>
 <body>
 <div id="navbar"></div>
