@@ -220,11 +220,6 @@ Add the hook:
 ]
 `
 
-Configure webhooks:
-`
-sudo nano /etc/webhook.conf
-`
-
 Setup the nginx for the webhook server:
 `
 sudo nano /etc/nginx/sites-available/webhook.beatblockbrowser.conf
@@ -341,3 +336,16 @@ And run it:
 sudo systemctl daemon-reload
 sudo systemctl enable webhook.service
 `
+
+# Security
+
+Setup a new user and disable root access
+
+`
+sudo adduser servadmin
+sudo usermod -a -G sudo servadmin
+sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+`
+
+Set `PermitRootLogin`, `AllowAgentForwarding`, `AllowTCPForwarding`, `DebianBanner`, `PermitTunnel` and `X11Forwarding` to `no`
+Enable `LoginGraceTime` and `MaxAuthTries`
