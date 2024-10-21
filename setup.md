@@ -201,7 +201,7 @@ Add the hook:
       "and": [
       {
         "match": {
-          "type": "payload-hash-sha256",
+          "type": "payload-hmac-sha256",
           "secret": "124305912678e7d834448a3c461366eb",
           "parameter": {
             "source": "header",
