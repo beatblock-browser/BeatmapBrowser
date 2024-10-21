@@ -83,7 +83,8 @@ async fn handle_request(request: Request<hyper::body::Incoming>, site: Static, d
             }?,
         // Default to static files
         _ => {
-            site.serve(request).await.expect("Failed to serve static file").map(|body| body.into())
+            Builder::new().body(Full::new(Bytes::from("Testing!")).into()).unwrap()
+            //site.serve(request).await.expect("Failed to serve static file").map(|body| body.into())
         },
     })
 }
