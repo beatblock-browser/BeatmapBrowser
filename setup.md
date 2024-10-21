@@ -287,10 +287,28 @@ Now enable it and run the webhook:
 `
 sudo ln -s /etc/nginx/sites-available/webhook.beatblockbrowser.conf /etc/nginx/sites-enabled/
 sudo adduser --system --no-create-home --group webhook
+sudo mkdir -p /var/lib/webhook
+sudo chown webhook:webhook /var/lib/webhook
+sudo chmod 750 /var/lib/webhook
+sudo mkdir -p /var/lib/webhook/.ssh
+sudo chown webhook:webhook /var/lib/webhook/.ssh
+sudo chmod 700 /var/lib/webhook/.ssh
+sudo -u webhook ssh-keygen -t rsa -b 4096 -C "webhook@beatblockbrowser.me" -f /var/lib/webhook/.ssh/id_rsa -N ""
+sudo chmod 600 /var/lib/webhook/.ssh/id_rsa
+sudo chmod 644 /var/lib/webhook/.ssh/id_rsa.pub
 sudo chown -R webhook:webhook /etc/webhook
 sudo chown -R webhook:webhook /home/BeatmapBrowser
+
+Get your SSH key and add them to the github:
+`
+sudo cat /var/lib/webhook/.ssh/id_rsa.pub
+`
+
+Setup the webhook service:
+`
 sudo nano /etc/systemd/system/webhook.service
 `
+
 
 Add the webhook service:
 `
