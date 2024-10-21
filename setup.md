@@ -149,19 +149,8 @@ server {
     add_header X-XSS-Protection "1; mode=block";
     add_header Referrer-Policy "no-referrer-when-downgrade";
     add_header Permissions-Policy "geolocation=()";
-    add_header Content-Security-Policy "
-        default-src 'self';
-        script-src 'self' https://code.jquery.com;
-        style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com;
-        font-src 'self' https://fonts.gstatic.com;
-        img-src 'self' https://images.example.com data:;
-        connect-src 'self' https://api.example.com;
-        frame-src 'none';
-        object-src 'none';
-        base-uri 'self';
-        form-action 'self';
-        upgrade-insecure-requests;
-    ";
+
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-qknBYUWz6H/aVERwaZ3Lax0CL8lfFIQUOD46TMdmGWI=' report-simple; style-src 'self' report-simple; font-src 'self'; img-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'self'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests";
 
     # Proxy Settings
     location / {
