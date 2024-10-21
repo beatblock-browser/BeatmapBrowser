@@ -22,7 +22,7 @@ image = "0.25.2"
 
 # Database
 surrealdb = "2.0.1"
-firebase-auth = "0.4.3"
+firebase-auth = { version = "0.4.3", default-features = false }
 uuid = { version = "1.10.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
 
 # Serialization
