@@ -5,6 +5,11 @@ set -e
 
 echo "Starting deployment..."
 
+SSH_KEY="/var/lib/webhook/.ssh/id_rsa"
+
+# Set GIT_SSH_COMMAND to use the specified SSH key
+export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no"
+
 # Pull the latest code
 git pull origin master
 
