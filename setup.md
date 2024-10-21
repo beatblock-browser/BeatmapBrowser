@@ -302,7 +302,7 @@ Type=simple
 User=webhook
 Group=webhook
 WorkingDirectory=/etc/webhook
-ExecStart=webhook -hooks /etc/webhook/hooks.json -port 9000
+ExecStart=webhook -verbose -hooks /etc/webhook/hooks.json -port 9000
 Restart=on-failure
 RestartSec=5s
 
