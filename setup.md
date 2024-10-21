@@ -302,6 +302,14 @@ sudo chmod 750 /home/webhook
 sudo usermod -d /home/webhook webhook
 sudo chown -R webhook:webhook /etc/webhook
 sudo chown -R webhook:webhook /home/BeatmapBrowser
+sudo chown root:root /home/BeatmapBrowser/deploy.sh
+sudo visudo
+`
+
+Add the following line to the end of the file:
+`
+webhook ALL=(root) NOPASSWD: /home/BeatmapBrowser/deploy.sh
+`
 
 Get your SSH key and add them to the github:
 `
