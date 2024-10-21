@@ -19,6 +19,6 @@ git pull origin master
 cargo build --release
 
 # Restart the systemd service
-systemctl restart rustapp.service
+sudo systemctl restart rustapp.service
 
 echo "Deployment completed successfully."
