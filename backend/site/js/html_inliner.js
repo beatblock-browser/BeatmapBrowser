@@ -15,6 +15,6 @@ $(document).ready(function () {
 function load_if_real(name, file, callback = function () {}) {
     const element = $(name);
     if (element) {
-        element.load(file, callback);
+        element.load("templates/" + file, callback);
     }
 }
