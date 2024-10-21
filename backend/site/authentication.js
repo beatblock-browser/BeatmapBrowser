@@ -1,6 +1,6 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+import { initializeApp } from "deps/firebase-app.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "deps/firebase-auth.js";
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -29,10 +29,6 @@ if (googleSignInBtn != null) {
 
         signInWithPopup(auth, provider)
             .then((result) => {
-                // Google Access Token (optional)
-                const credential = GoogleAuthProvider.credentialFromResult(result);
-                const token = credential.accessToken;
-
                 // The signed-in user info
                 const user = result.user;
 
@@ -43,10 +39,7 @@ if (googleSignInBtn != null) {
             })
             .catch((error) => {
                 // Handle Errors here.
-                const errorCode = error.code;
                 const errorMessage = error.message;
-                const email = error.customData?.email;
-                const credential = GoogleAuthProvider.credentialFromError(error);
 
                 console.error('Error during sign in:', error);
 
