@@ -201,7 +201,7 @@ Add the hook:
             "name": "/home/BeatmapBrowser/deploy.sh"
         }
     ],
-    "command-working-directory": "/home/BeatmapBrowser",
+    "command-working-directory": "bin",
     "response-message": "Deploying...",
     "trigger-rule": {
       "and": [
