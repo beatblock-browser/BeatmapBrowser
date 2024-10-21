@@ -308,7 +308,7 @@ sudo visudo
 
 Add the following line to the end of the file:
 `
-root ALL=(webhook) NOPASSWD: /home/BeatmapBrowser/deploy.sh
+webhook ALL=(root) NOPASSWD: /home/BeatmapBrowser/deploy.sh
 `
 
 Get your SSH key and add them to the github:
