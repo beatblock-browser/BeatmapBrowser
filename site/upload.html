@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Beatblock Browser</title>
+    <link href="deps/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <script src="deps/bootstrap.bundle.min.js"
+            integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+            crossorigin="anonymous"></script>
+    <script src="deps/jquery.min.js"></script>
+    <link rel="stylesheet" href="css/style.css"/>
+    <script src="js/html_inliner.js"></script>
+</head>
+<body>
+<div id="navbar"></div>
+
+<!-- Upload Form Container -->
+<div class="container mt-5">
+    <h2 class="mb-4 text-center">Upload Your BeatMap</h2>
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div id="search-result-template-long"></div>
+            <!-- Upload Form -->
+            <form id="uploadForm" enctype="multipart/form-data">
+                <!-- BeatMap File Upload -->
+                <div class="mb-3">
+                    <label for="beatmap" class="form-label">Upload BeatMap (ZIP format)</label>
+                    <input class="form-control" type="file" id="beatmap" name="beatmap" accept=".zip" required>
+                </div>
+
+                <!-- Hidden Input for Firebase ID Token -->
+                <input type="hidden" id="firebaseToken" name="firebaseToken">
+
+                <!-- Submit Button -->
+                <button type="submit" class="btn btn-success w-100">Upload BeatMap</button>
+            </form>
+            <!-- Upload Form End -->
+            <div id="feedback" class="alert d-none" role="alert"></div>
+        </div>
+    </div>
+</div>
+<script type="module" src="js/upload.js"></script>
+</body>
+</html>
