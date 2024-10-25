@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         site,
         db,
         auth: firebase_auth,
-        ratelimiter: Arc::new(Mutex::new(Ratelimiter::new()))
+        ratelimiter: Arc::new(Mutex::new(Ratelimiter::new())),
     };
 
     let _ = tokio::spawn(run_bot(data.db.clone(), data.ratelimiter.clone()));
@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("Server running on https://{}/", addr);
     loop {
         match handle_connection(&listener, data.clone()).await {
-            Ok(()) => {},
+            Ok(()) => {}
             Err(err) => println!("Error serving connection: {err:?}")
         }
     }
@@ -81,30 +81,16 @@ async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(),
         .expect("Failed to accept TCP connection");
 
     tokio::spawn(async move {
-
-        if let Err(err) = if env::args().nth(3).is_some() {
-            http2::Builder::new(TokioExecutor)
-                .timer(TokioTimer::new())
-                .serve_connection(
-                    TokioIo::new(stream),
-                    service_fn(move |req| {
-                        let data = data.clone();
-                        handle_request(req, ip, data)
-                    }),
-                )
-                .await
-        } else {
-            http1::Builder::new()
-                .timer(TokioTimer::new())
-                .serve_connection(
-                    TokioIo::new(stream),
-                    service_fn(move |req| {
-                        let data = data.clone();
-                        handle_request(req, ip, data)
-                    }),
-                )
-                .await
-        }
+        if let Err(err) = http1::Builder::new()
+            .timer(TokioTimer::new())
+            .serve_connection(
+                TokioIo::new(stream),
+                service_fn(move |req| {
+                    let data = data.clone();
+                    handle_request(req, ip, data)
+                }),
+            )
+            .await
         {
             eprintln!("Error serving connection: {:?}", err);
         }
@@ -122,7 +108,7 @@ pub struct SiteData {
     site: Static,
     db: Surreal<Client>,
     auth: FirebaseAuth,
-    ratelimiter: Arc<Mutex<Ratelimiter>>
+    ratelimiter: Arc<Mutex<Ratelimiter>>,
 }
 
 async fn handle_request(request: Request<hyper::body::Incoming>, ip: SocketAddr, data: SiteData) -> Result<Response<EitherBody>, Error> {
@@ -139,18 +125,18 @@ async fn handle_request(request: Request<hyper::body::Incoming>, ip: SocketAddr,
                     }
                 })?
             }
-        },
+        }
         (&Method::POST, "/api/upload") => match upload(request, ip, &data).await {
-                Ok(query) => Builder::new().status(StatusCode::OK).body(Full::new(Bytes::from(format!("{query}"))).into()),
-                Err(error) => {
-                    println!("Upload Error: {:?}", error);
-                    build_request((error.get_code(), error.to_string()))
-                }
-            }?,
+            Ok(query) => Builder::new().status(StatusCode::OK).body(Full::new(Bytes::from(format!("{query}"))).into()),
+            Err(error) => {
+                println!("Upload Error: {:?}", error);
+                build_request((error.get_code(), error.to_string()))
+            }
+        }?,
         // Default to static files
         _ => {
             data.site.serve(request).await.expect("Failed to serve static file").map(|body| body.into())
-        },
+        }
     })
 }
 
