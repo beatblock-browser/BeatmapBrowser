@@ -33,7 +33,10 @@
                 <input type="hidden" id="firebaseToken" name="firebaseToken">
 
                 <!-- Submit Button -->
-                <button type="submit" class="btn btn-success w-100">Upload BeatMap</button>
+                <button type="submit" class="btn btn-success w-100" id="submitButton">
+                    <span id="submitButtonText">Upload BeatMap</span>
+                    <span id="spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+                </button>
             </form>
             <!-- Upload Form End -->
             <div id="feedback" class="alert d-none" role="alert"></div>

@@ -6,6 +6,7 @@ mod upload;
 mod discord;
 mod ratelimiter;
 
+use std::env;
 use crate::body::EitherBody;
 use crate::database::connect;
 use crate::discord::run_bot;
@@ -17,7 +18,7 @@ use firebase_auth::FirebaseAuth;
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::http::response::Builder;
-use hyper::server::conn::http2;
+use hyper::server::conn::{http1, http2};
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_staticfile::Static;
@@ -27,6 +28,7 @@ use std::path::Path;
 use std::sync::{Arc, LockResult, Mutex};
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 
 #[derive(Clone)]
@@ -73,23 +75,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(), Error> {
-    let (stream, _) = listener
+    let (stream, ip) = listener
         .accept()
         .await
         .expect("Failed to accept TCP connection");
 
-    let ip = stream.peer_addr()?;
     tokio::spawn(async move {
-        if let Err(err) = http2::Builder::new(TokioExecutor)
-            .timer(TokioTimer::new())
-            .serve_connection(
-                TokioIo::new(stream),
-                service_fn(move |req| {
-                    let data = data.clone();
-                    handle_request(req, ip, data)
-                }),
-            )
-            .await
+
+        if let Err(err) = if env::args().nth(2).is_some() {
+            http2::Builder::new(TokioExecutor)
+                .timer(TokioTimer::new())
+                .serve_connection(
+                    TokioIo::new(stream),
+                    service_fn(move |req| {
+                        let data = data.clone();
+                        handle_request(req, ip, data)
+                    }),
+                )
+                .await
+        } else {
+            http1::Builder::new()
+                .timer(TokioTimer::new())
+                .serve_connection(
+                    TokioIo::new(stream),
+                    service_fn(move |req| {
+                        let data = data.clone();
+                        handle_request(req, ip, data)
+                    }),
+                )
+                .await
+        }
         {
             eprintln!("Error serving connection: {:?}", err);
         }
@@ -98,7 +113,8 @@ async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(),
 }
 
 fn build_request(data: (StatusCode, String)) -> Result<Response<EitherBody>, hyper::http::Error> {
-    Builder::new().status(data.0).body(Full::new(Bytes::from(data.1)).into())
+    Builder::new().status(data.0)
+        .body(Full::new(Bytes::from(data.1)).into())
 }
 
 #[derive(Clone)]
@@ -125,8 +141,7 @@ async fn handle_request(request: Request<hyper::body::Incoming>, ip: SocketAddr,
             }
         },
         (&Method::POST, "/api/upload") => match upload(request, ip, &data).await {
-                Ok(query) => Builder::new().status(StatusCode::SEE_OTHER).header("Location", format!("../search.html?{query}"))
-                    .body(Full::new(Bytes::from("")).into()),
+                Ok(query) => Builder::new().status(StatusCode::OK).body(Full::new(Bytes::from(format!("{query}"))).into()),
                 Err(error) => {
                     println!("Upload Error: {:?}", error);
                     build_request((error.get_code(), error.to_string()))

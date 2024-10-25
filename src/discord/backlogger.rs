@@ -18,9 +18,9 @@ pub async fn update_backlog(handler: &Handler, context: &Context) -> Result<(), 
         }
     }
     for channel in WHITELISTED_CHANNELS {
-        //update_channel(ChannelId::new(channel), handler.clone(), context.http.clone()).await?;
+        update_channel(ChannelId::new(channel), handler.clone(), context.http.clone()).await?;
     }
-    println!("Done!");
+    println!("Done updating backlog!");
     Ok(())
 }
 
