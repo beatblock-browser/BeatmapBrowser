@@ -6,7 +6,6 @@ use crate::{LockResultExt, SiteData};
 use anyhow::Error;
 use chrono::{DateTime, Utc};
 use firebase_auth::FirebaseUser;
-use futures::StreamExt;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::header::CONTENT_TYPE;

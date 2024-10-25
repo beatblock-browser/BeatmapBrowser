@@ -30,8 +30,8 @@ struct Handler {
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, context: Context, message: Message) {
-        if let Some(parent) = message.channel_id.to_channel(context.http).await.unwrap().guild().unwrap().parent_id {
-            if !WHITELISTED_CHANNELS.contains(parent.into()) {
+        if let Some(parent) = message.channel_id.to_channel(&context.http).await.unwrap().guild().unwrap().parent_id {
+            if !WHITELISTED_CHANNELS.contains(&parent.into()) {
                 return;
             }
         } else if !WHITELISTED_CHANNELS.contains(&message.channel_id.into())  {
