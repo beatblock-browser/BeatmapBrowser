@@ -6,7 +6,6 @@ mod upload;
 mod discord;
 mod ratelimiter;
 
-use std::env;
 use crate::body::EitherBody;
 use crate::database::connect;
 use crate::discord::run_bot;
@@ -18,7 +17,7 @@ use firebase_auth::FirebaseAuth;
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::http::response::Builder;
-use hyper::server::conn::{http1, http2};
+use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_staticfile::Static;
@@ -28,7 +27,6 @@ use std::path::Path;
 use std::sync::{Arc, LockResult, Mutex};
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
-use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 
 #[derive(Clone)]
