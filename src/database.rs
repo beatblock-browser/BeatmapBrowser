@@ -4,20 +4,22 @@ use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::opt::auth::Root;
 use surrealdb::sql::Thing;
 use surrealdb::Surreal;
+use crate::parsing::LevelVariant;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BeatMap {
     pub song: String,
     pub artist: String,
     pub charter: String,
     pub charter_uid: Option<String>,
-    pub difficulty: f32,
+    pub difficulties: Vec<LevelVariant>,
     pub description: String,
     pub artist_list: String,
     pub image: Option<String>,
     pub download: String,
     pub upvotes: u64,
     pub upload_date: DateTime<Utc>,
+    pub update_date: DateTime<Utc>,
     pub id: Option<Thing>
 }
 
@@ -25,7 +27,10 @@ pub struct BeatMap {
 pub struct User {
     pub maps: Vec<Thing>,
     pub upvoted: Vec<Thing>,
-    pub id: Option<Thing>
+    pub id: Option<Thing>,
+    pub discord_id: Option<u64>,
+    pub google_id: Option<String>,
+    pub unlinked: bool
 }
 
 pub async fn connect() -> surrealdb::Result<Surreal<Client>> {
