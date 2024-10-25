@@ -82,7 +82,7 @@ async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(),
 
     tokio::spawn(async move {
 
-        if let Err(err) = if env::args().nth(2).is_some() {
+        if let Err(err) = if env::args().nth(3).is_some() {
             http2::Builder::new(TokioExecutor)
                 .timer(TokioTimer::new())
                 .serve_connection(

@@ -107,7 +107,7 @@ pub async fn send_response(_http: &Arc<Http>, _message: &Message, _error: &str) 
 
 pub async fn run_bot(db: Surreal<surrealdb::engine::remote::ws::Client>, ratelimit: Arc<Mutex<Ratelimiter>>) {
     // Login with a bot token from the environment
-    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+    let token = env::args().nth(2).expect("Expected a token in the environment");
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;
