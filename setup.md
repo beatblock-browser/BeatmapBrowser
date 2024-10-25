@@ -73,7 +73,7 @@ After=network.target
 User=rustapp
 Group=rustapp
 WorkingDirectory=/home/BeatmapBrowser
-ExecStart=/home/BeatmapBrowser/target/release/backend 127.0.0.1:3000
+ExecStart=/home/BeatmapBrowser/target/release/backend 127.0.0.1:3000 (Discord token) http2
 Restart=on-failure
 
 [Install]
