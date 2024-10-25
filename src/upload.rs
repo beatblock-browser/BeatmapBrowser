@@ -6,7 +6,9 @@ use crate::{LockResultExt, SiteData};
 use anyhow::Error;
 use chrono::{DateTime, Utc};
 use firebase_auth::FirebaseUser;
+use futures::StreamExt;
 use http_body_util::BodyExt;
+use hyper::body::Incoming;
 use hyper::header::CONTENT_TYPE;
 use hyper::{Request, StatusCode};
 use image::{ImageFormat, ImageReader};
@@ -88,7 +90,7 @@ pub struct UserId {
     id: Thing,
 }
 
-pub async fn upload(request: Request<hyper::body::Incoming>, ip: SocketAddr, data: &SiteData) -> Result<String, UploadError> {
+pub async fn upload(request: Request<Incoming>, ip: SocketAddr, data: &SiteData) -> Result<String, UploadError> {
     if data.ratelimiter.lock().ignore_poison().check_limited(SiteAction::Update, &UniqueIdentifier::Ip(ip)) {
         return Err(UploadError::Ratelimited());
     }
@@ -195,7 +197,7 @@ pub fn save_image(data: &mut FileData, path: &PathBuf, uuid: &Uuid) -> Result<()
     Ok(())
 }
 
-pub async fn get_form(request: Request<hyper::body::Incoming>) -> Result<UploadForm, UploadError> {
+pub async fn get_form(request: Request<Incoming>) -> Result<UploadForm, UploadError> {
     let header = request.headers().get(CONTENT_TYPE)
         .and_then(|ct| ct.to_str().ok())
         .and_then(|ct| multer::parse_boundary(ct).ok())
@@ -205,7 +207,7 @@ pub async fn get_form(request: Request<hyper::body::Incoming>) -> Result<UploadF
     let mut form = UploadForm::default();
     let mut multipart = Multipart::with_constraints(request.into_body().into_data_stream(), header,
                                                     Constraints::new().allowed_fields(vec!("beatmap", "firebaseToken"))
-                                                        .size_limit(SizeLimit::new().whole_stream(MAX_SIZE as u64)));
+                                                        .size_limit(SizeLimit::new().whole_stream(MAX_SIZE as u64 + 5000)));
     while let Some(mut field) = multipart.next_field().await.map_err(|err| UploadError::KnownArgumentError(err.into()))? {
         if let Some(name) = field.name() {
             match name {
@@ -223,10 +225,7 @@ pub async fn get_form(request: Request<hyper::body::Incoming>) -> Result<UploadF
 
 async fn read_field(field: &mut Field<'_>) -> Result<Vec<u8>, UploadError> {
     let mut buf = Vec::new();
-    while let Some(chunk) = field.chunk().await.map_err(|err| {
-        println!("Got error! {err}");
-        err
-    })? {
+    while let Some(chunk) = field.chunk().await? {
         buf.extend_from_slice(&chunk);
     }
     Ok(buf)

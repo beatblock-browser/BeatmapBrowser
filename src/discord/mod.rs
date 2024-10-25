@@ -1,9 +1,9 @@
 mod backlogger;
 
 use crate::database::User;
+use crate::discord::backlogger::update_backlog;
 use crate::ratelimiter::{Ratelimiter, UniqueIdentifier};
 use crate::upload::{get_or_create_user, upload_beatmap, UploadError, UserId, MAX_SIZE};
-use firebase_auth::FirebaseAuth;
 use serenity::all::{Http, Ready};
 use serenity::async_trait;
 use serenity::model::channel::Message;
@@ -14,12 +14,13 @@ use std::time::Duration;
 use surrealdb::Surreal;
 use tokio::time::timeout;
 // Real server
-//pub const WHITELISTED_GUILDS: [u64; 1] = [756193219737288836];
-//pub const WHITELISTED_CHANNELS: [u64; 1] = [1244495595838640179];
+pub const WHITELISTED_GUILDS: [u64; 1] = [756193219737288836];
+pub const WHITELISTED_CHANNELS: [u64; 1] = [1244495595838640179];
 
 // Testing server
-pub const WHITELISTED_GUILDS: [u64; 0] = [];
-pub const WHITELISTED_CHANNELS: [u64; 1] = [1298415906388574279];
+//pub const WHITELISTED_GUILDS: [u64; 0] = [];
+//pub const WHITELISTED_CHANNELS: [u64; 1] = [1298415906388574279];
+
 #[derive(Clone)]
 struct Handler {
     db: Surreal<surrealdb::engine::remote::ws::Client>,
@@ -29,7 +30,11 @@ struct Handler {
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, context: Context, message: Message) {
-        if !WHITELISTED_CHANNELS.contains(&message.channel_id.into())  {
+        if let Some(parent) = message.channel_id.to_channel(context.http).await.unwrap().guild().unwrap().parent_id {
+            if !WHITELISTED_CHANNELS.contains(parent.into()) {
+                return;
+            }
+        } else if !WHITELISTED_CHANNELS.contains(&message.channel_id.into())  {
             return;
         }
 
@@ -37,7 +42,7 @@ impl EventHandler for Handler {
     }
 
     async fn ready(&self, ctx: Context, _data_about_bot: Ready) {
-        //update_backlog(self, &ctx).await.unwrap();
+        update_backlog(self, &ctx).await.unwrap();
     }
 }
 
@@ -89,7 +94,7 @@ impl Handler {
     }
 }
 
-pub async fn send_response(http: &Arc<Http>, message: &Message, error: &str) {
+pub async fn send_response(_http: &Arc<Http>, _message: &Message, _error: &str) {
     /*match message.channel_id.send_message(&http, CreateMessage::new()
         .reference_message(message)
         .content(error)).await {
