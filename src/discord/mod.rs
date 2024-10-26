@@ -13,6 +13,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use surrealdb::Surreal;
 use tokio::time::timeout;
+use crate::LockResultExt;
+
 // Real server
 pub const WHITELISTED_GUILDS: [u64; 1] = [756193219737288836];
 pub const WHITELISTED_CHANNELS: [u64; 1] = [1244495595838640179];
@@ -47,7 +49,7 @@ impl EventHandler for Handler {
 }
 
 impl Handler {
-    pub async fn handle_message(&self, _http: &Arc<Http>, message: Message) -> bool {
+    pub async fn handle_message(&self, _http: &Arc<Http>, message: Message) {
         for attachment in &message.attachments {
             if !attachment.filename.ends_with(".zip") && !attachment.filename.ends_with(".rar") {
                 continue
@@ -79,9 +81,7 @@ impl Handler {
                     println!("Timeout error for {}", message.link());
                 }
             }
-            return true;
         }
-        false
     }
     
     pub async fn upload_map(&self, file: Result<Vec<u8>, serenity::Error>, user: u64) -> Result<String, UploadError> {
@@ -90,6 +90,7 @@ impl Handler {
             discord_id: Some(user),
             ..Default::default()
         }).await?;
+        self.ratelimit.lock().ignore_poison().clear();
         upload_beatmap(file?, &self.db, &self.ratelimit, UniqueIdentifier::Discord(user), id).await
     }
 }
