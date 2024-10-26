@@ -1,5 +1,5 @@
 use crate::database::{BeatMap, User};
-use crate::parsing::{get_parser, parse_archive, FileData};
+use crate::parsing::{check_archive, get_parser, parse_archive, FileData};
 use crate::ratelimiter::{Ratelimiter, SiteAction, UniqueIdentifier};
 use crate::search::SearchArguments;
 use crate::{LockResultExt, SiteData};
@@ -117,7 +117,9 @@ pub async fn get_or_create_user(id: Option<UserId>, db: &Surreal<Client>, defaul
 
 pub async fn upload_beatmap(mut beatmap: Vec<u8>, db: &Surreal<Client>, ratelimiter: &Arc<Mutex<Ratelimiter>>,
                             ip: UniqueIdentifier, charter_id: Thing) -> Result<String, UploadError> {
-    let mut file_data = parse_archive(get_parser(&mut beatmap)?.deref_mut()).map_err(|err| UploadError::ZipError(err))?;
+    let mut file_data = parse_archive(get_parser(&mut beatmap)?.deref_mut()).map_err(UploadError::ZipError)?;
+    check_archive(&mut beatmap).map_err(UploadError::ZipError)?;
+
     let uuid = Uuid::new_v4();
     let path = PathBuf::from("site/output");
 
@@ -128,6 +130,7 @@ pub async fn upload_beatmap(mut beatmap: Vec<u8>, db: &Surreal<Client>, ratelimi
     let query = serde_urlencoded::to_string(&SearchArguments {
         query: file_data.level_data.song_name.clone()
     }).map_err(|err| UploadError::SongNameError(err))?;
+
     let name = file_data.level_data.song_name.clone();
     let beatmap = BeatMap {
         song: file_data.level_data.song_name,
@@ -160,6 +163,7 @@ pub async fn upload_beatmap(mut beatmap: Vec<u8>, db: &Surreal<Client>, ratelimi
         if ratelimiter.lock().ignore_poison().check_limited(SiteAction::Upload, &ip) {
             return Err(UploadError::Ratelimited());
         }
+
         let map: Thing = ("beatmaps", uuid.to_string().as_str()).into();
         let Some(_): Option<User> = db.update(("users", charter_id.id.to_string())).merge(UserMapUpdate {
             maps: vec![map.clone()]

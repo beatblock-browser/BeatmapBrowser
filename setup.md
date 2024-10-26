@@ -60,6 +60,7 @@ sudo systemctl enable surrealdb.service
 Setup user and group:
 `
 sudo adduser --system --no-create-home --group rustapp
+sudo chown -R rustapp:rustapp BeatmapBrowser/site/output
 sudo nano /etc/systemd/system/rustapp.service
 `
 

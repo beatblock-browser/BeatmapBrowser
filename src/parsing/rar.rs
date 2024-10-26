@@ -1,4 +1,5 @@
-use crate::parsing::{check_path, ArchiveParser};
+use crate::parsing::ArchiveParser;
+use crate::upload::MAX_SIZE;
 use anyhow::{Context, Error};
 use std::env::temp_dir;
 use std::io::{Cursor, Write};
@@ -7,7 +8,6 @@ use std::{fs, mem};
 use unrar::{Archive, CursorBeforeFile, CursorBeforeHeader, OpenArchive, Process};
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
-use crate::upload::MAX_SIZE;
 
 pub struct RarArchiveReader<'a> {
     temp_file: PathBuf,
@@ -43,14 +43,15 @@ impl ArchiveParser for RarArchiveReader<'_> {
         let mut zip = ZipWriter::new(Cursor::new(output));
         let mut archive = Archive::new(&self.temp_file).open_for_processing()?;
         while let Some(header) = archive.read_header()? {
-            check_path(&header.entry().filename)?;
             let file_name = match header.entry().filename.to_str() {
                 Some(name) => name,
                 None => return Err(Error::msg("Invalid file name in rar"))
-            };
-            zip.start_file(file_name, SimpleFileOptions::default())?;
+            }.to_string();
             let (file_data, next) = header.read()?;
-            zip.write(&file_data)?;
+            if !file_data.is_empty() {
+                zip.start_file(&file_name, SimpleFileOptions::default())?;
+                zip.write(&file_data)?;
+            }
             archive = next;
         }
 

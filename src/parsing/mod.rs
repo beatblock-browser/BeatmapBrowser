@@ -1,9 +1,12 @@
-use anyhow::Error;
-use serde::{Deserialize, Serialize};
-use std::path::{Component, PathBuf};
 use crate::parsing::rar::RarArchiveReader;
 use crate::parsing::zip::ZipArchiveReader;
-use crate::upload::UploadError;
+use crate::upload::{UploadError, MAX_SIZE};
+use anyhow::Error;
+use serde::{Deserialize, Serialize};
+use std::io::{Cursor, Read, Write};
+use std::path::{Component, PathBuf};
+use ::zip::{ZipArchive, ZipWriter};
+use ::zip::write::SimpleFileOptions;
 
 pub mod zip;
 pub mod rar;
@@ -97,10 +100,47 @@ pub fn parse_archive(archive_parser: &mut dyn ArchiveParser) -> Result<FileData,
     }
 
     archive_parser.overwrite_file()?;
+
     Ok(FileData {
         level_data: metadata,
         image
     })
+}
+
+pub fn check_archive(file: &mut Vec<u8>) -> Result<(), Error> {
+    let output = Vec::new();
+    let mut zip = ZipWriter::new(Cursor::new(output));
+    let mut cursor: Cursor<&Vec<u8>> = Cursor::new(file);
+    let mut archive = ZipArchive::new(&mut cursor)?;
+    let mut size = 0;
+    let files: Vec<String> = archive.file_names().map(|string| string.to_string()).collect();
+    for file_name in files {
+        if !is_legal_name(&file_name)? {
+            continue
+        }
+        let mut file = archive.by_name(&file_name)?;
+        let file_size = file.size();
+        // Prevent overflows
+        if (size + file_size).max(file_size) > (MAX_SIZE * 2) as u64 {
+            return Err(Error::msg("Uncompressed file size is too large!"));
+        }
+        size += file_size;
+        zip.start_file(file_name, SimpleFileOptions::default())?;
+        let mut zip_file = Vec::new();
+        file.read_to_end(&mut zip_file)?;
+        zip.write(&zip_file)?;
+    }
+    *file = zip.finish()?.into_inner();
+    Ok(())
+}
+
+// Allows misspelling, just here to block exes and other malicious files
+pub const EXTENSIONS: [&'static str; 12] = ["png", "jpg", "jpeg", "webp", "mp3", "bmp", "ogg", "oog", "wav", "json", "md", "txt"];
+
+fn is_legal_name(name: &str) -> Result<bool, Error> {
+    check_path(&PathBuf::from(name))?;
+    Ok(name.ends_with('/') || name.ends_with('\\') ||
+        EXTENSIONS.contains(&name.split('.').last().unwrap()))
 }
 
 pub trait ArchiveParser {

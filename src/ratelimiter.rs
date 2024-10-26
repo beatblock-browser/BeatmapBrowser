@@ -29,6 +29,16 @@ impl Ratelimiter {
         limit.add_limit(ip, action.get_limit());
         output
     }
+
+    pub fn clear(&mut self) {
+        self.limits.clear();
+        for action in ACTIONS {
+            self.limits.insert(action, Limits {
+                blocked_times: vec![],
+                searchable_users: Default::default(),
+            });
+        }
+    }
 }
 
 pub struct Limits {
