@@ -49,5 +49,7 @@ pub async fn connect() -> surrealdb::Result<Surreal<Client>> {
 
     db.query("DEFINE ANALYZER ascii TOKENIZERS blank FILTERS ascii, lowercase;").await.unwrap();
     db.query("DEFINE INDEX song_name ON TABLE beatmaps FIELDS song SEARCH ANALYZER ascii;").await.unwrap();
+    db.query("DEFINE INDEX artist_name ON TABLE beatmaps FIELDS artist SEARCH ANALYZER ascii;").await.unwrap();
+    db.query("DEFINE INDEX charter_name ON TABLE beatmaps FIELDS charter SEARCH ANALYZER ascii;").await.unwrap();
     Ok(db)
 }
