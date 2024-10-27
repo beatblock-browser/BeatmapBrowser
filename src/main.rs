@@ -110,21 +110,26 @@ pub struct SiteData {
 }
 
 async fn handle_request(request: Request<hyper::body::Incoming>, ip: SocketAddr, data: SiteData) -> Result<Response<EitherBody>, Error> {
+    let identifier = match ip {
+        SocketAddr::V4(ip) => UniqueIdentifier::Ipv4(ip.ip().clone()),
+        SocketAddr::V6(ip) => UniqueIdentifier::Ipv6(ip.ip().clone())
+    };
     Ok(match (request.method(), request.uri().path()) {
         (&Method::GET, "/api/search") => {
-            if data.ratelimiter.lock().ignore_poison().check_limited(SiteAction::Search, &UniqueIdentifier::Ip(ip)) {
-                build_request((StatusCode::TOO_MANY_REQUESTS, "Ratelimited".to_string()))?
+            if data.ratelimiter.lock().ignore_poison().check_limited(SiteAction::Search, &identifier) {
+                build_request((StatusCode::TOO_MANY_REQUESTS, "Searched too many times in one second!".to_string()))?
             } else {
-                build_request(match search_database(request.uri().query().unwrap_or(""), data.db).await {
+                let temp = build_request(match search_database(request.uri().query().unwrap_or(""), data.db).await {
                     Ok(maps) => (StatusCode::default(), serde_json::to_string(&maps).expect("Failed to serialize maps")),
                     Err(error) => {
                         println!("Search Error: {:?}", error);
                         (error.get_code(), error.to_string())
                     }
-                })?
+                })?;
+                temp
             }
         }
-        (&Method::POST, "/api/upload") => match upload(request, ip, &data).await {
+        (&Method::POST, "/api/upload") => match upload(request, identifier, &data).await {
             Ok(query) => Builder::new().status(StatusCode::OK).body(Full::new(Bytes::from(format!("{query}"))).into()),
             Err(error) => {
                 println!("Upload Error: {:?}", error);

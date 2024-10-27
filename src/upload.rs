@@ -15,7 +15,6 @@ use multer::{Constraints, Field, Multipart, SizeLimit};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Cursor;
-use std::net::SocketAddr;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -89,8 +88,8 @@ pub struct UserId {
     id: Thing,
 }
 
-pub async fn upload(request: Request<Incoming>, ip: SocketAddr, data: &SiteData) -> Result<String, UploadError> {
-    if data.ratelimiter.lock().ignore_poison().check_limited(SiteAction::Update, &UniqueIdentifier::Ip(ip)) {
+pub async fn upload(request: Request<Incoming>, identifier: UniqueIdentifier, data: &SiteData) -> Result<String, UploadError> {
+    if data.ratelimiter.lock().ignore_poison().check_limited(SiteAction::Update, &identifier) {
         return Err(UploadError::Ratelimited());
     }
     let form = get_form(request).await?;
@@ -100,8 +99,7 @@ pub async fn upload(request: Request<Incoming>, ip: SocketAddr, data: &SiteData)
         google_id: Some(user.user_id),
         ..Default::default()
     }).await?;
-
-    timeout(Duration::from_millis(1000), upload_beatmap(form.beatmap, &data.db, &data.ratelimiter, UniqueIdentifier::Ip(ip), id)).await?
+    timeout(Duration::from_millis(1000), upload_beatmap(form.beatmap, &data.db, &data.ratelimiter, identifier, id)).await?
 }
 
 pub async fn get_or_create_user(id: Option<UserId>, db: &Surreal<Client>, default_user: User) -> Result<Thing, UploadError> {
