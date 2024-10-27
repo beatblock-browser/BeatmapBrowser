@@ -72,12 +72,11 @@ async function displaySearchResults(params) {
                 // Clone the template
                 const clone = template.content.cloneNode(true);
 
-                //clone.querySelector('.custom-card').classList.add('col-md-6');
                 // Populate the clone with actual data
                 clone.querySelector('.card-title').textContent = map.song;
-                clone.querySelectorAll('.card-text')[0].innerHTML = `<strong>Artist:</strong> ${map.artist}`;
-                clone.querySelectorAll('.card-text')[1].innerHTML = `<strong>Charter:</strong> ${map.charter}`;
-                clone.querySelectorAll('.card-text')[2].innerHTML = `<strong>Difficulty:</strong> ${map.difficulty || 'N/A'}`;
+                clone.querySelectorAll('.card-text')[0].innerHTML = map.artist;
+                clone.querySelectorAll('.card-text')[1].innerHTML = map.charter;
+                clone.querySelectorAll('.card-text')[2].innerHTML = map.difficulties.map(d => d.display).join(", ");
                 if (map.image != null) {
                     clone.querySelector('img').src = 'output/' + map.image;
                 } else {
