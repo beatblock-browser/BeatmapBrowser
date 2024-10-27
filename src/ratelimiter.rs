@@ -1,7 +1,7 @@
 use chrono::{DateTime, TimeDelta, Utc};
 use linked_hash_set::LinkedHashSet;
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::ops::Add;
 use std::time::SystemTime;
 
@@ -46,9 +46,10 @@ pub struct Limits {
     searchable_users: LinkedHashSet<UniqueIdentifier>
 }
 
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Clone, Copy)]
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Debug)]
 pub enum UniqueIdentifier {
-    Ip(SocketAddr),
+    Ipv4(Ipv4Addr),
+    Ipv6(Ipv6Addr),
     Discord(u64)
 }
 
@@ -56,7 +57,10 @@ impl Limits {
     pub fn check_limited(&mut self, ip: &UniqueIdentifier) -> bool {
         while !self.blocked_times.is_empty() {
             if self.blocked_times[0] < DateTime::<Utc>::from(SystemTime::now()) {
+                self.blocked_times.pop();
                 self.searchable_users.pop_front();
+            } else {
+                break
             }
         }
 

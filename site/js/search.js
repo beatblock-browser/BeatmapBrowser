@@ -27,15 +27,37 @@ async function displaySearchResults(params) {
         noResultsContainer.style.display = 'none';
 
         // Fetch data from the /api/search endpoint
-        const response = await fetch(`/api/search${params}`, {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json'
-            }
-        });
+        let response;
+        try {
+             response = await fetch(`/api/search${params}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+        } catch (e) {
+            console.log(e);
+        }
+
+        if (response == null) {
+            resultsContainer.innerHTML = '';
+            document.getElementById('search-error').classList.remove('invisible');
+            document.getElementById('search-error-text').textContent = "Failed to search, see console log";
+            return
+        }
+
+        if (response.status === 429) {
+            resultsContainer.innerHTML = '';
+            document.getElementById('search-error').classList.remove('invisible');
+            document.getElementById('search-error-text').innerHTML = 'Please stop spamming search requests!';
+            return
+        }
 
         if (!response.ok) {
-            throw new Error(`Server error: ${response.status} ${response.statusText}`);
+            resultsContainer.innerHTML = '';
+            document.getElementById('search-error').classList.remove('invisible');
+            document.getElementById('search-error-text').textContent = 'Failed to search, see console log';
+            return
         }
 
         const searchResult = await response.json();
@@ -46,8 +68,6 @@ async function displaySearchResults(params) {
         resultsContainer.innerHTML = '';
 
         if (beatMaps.length > 0) {
-            noResultsContainer.style.display = 'none';
-
             beatMaps.forEach(map => {
                 // Clone the template
                 const clone = template.content.cloneNode(true);
@@ -73,13 +93,14 @@ async function displaySearchResults(params) {
             });
         } else {
             // No results found
-            noResultsContainer.style.display = 'block';
+            noResultsContainer.classList.remove('invisible');
             resultsContainer.innerHTML = '';
         }
     } catch (error) {
         console.error('Error fetching search results:', error);
-        resultsContainer.innerHTML = '<p>An error occurred while fetching search results. Please try again later.</p>';
-        noResultsContainer.style.display = 'none';
+        resultsContainer.innerHTML = '';
+        document.getElementById('search-error').classList.remove('invisible');
+        document.getElementById('search-error-text').textContent = 'An error occurred while fetching search results. Please try again later.';
     }
 }
 
