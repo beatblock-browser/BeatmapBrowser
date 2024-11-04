@@ -1,16 +1,14 @@
-use std::sync::Arc;
 use crate::discord::{Handler, WHITELISTED_CHANNELS, WHITELISTED_GUILDS};
 use anyhow::Error;
-use serenity::all::{ChannelId, Context, GuildId, Http, Message};
+use futures::Stream;
+use serenity::all::{ChannelId, Context, GuildChannel, GuildId, Http, Message, Timestamp};
 use serenity::futures::{stream, StreamExt};
+use std::sync::Arc;
 
 pub async fn update_backlog(handler: &Handler, context: &Context) -> Result<(), Error> {
     for guild in WHITELISTED_GUILDS {
         for thread in GuildId::new(guild).get_active_threads(&context.http).await?.threads {
-            let Some(parent) = thread.parent_id else {
-                continue
-            };
-            if !WHITELISTED_CHANNELS.contains(&parent.into()) {
+            if !WHITELISTED_CHANNELS.contains(&thread.parent_id.unwrap_or(ChannelId::new(1)).into()) {
                 continue
             }
 
@@ -18,6 +16,16 @@ pub async fn update_backlog(handler: &Handler, context: &Context) -> Result<(), 
         }
     }
     for channel in WHITELISTED_CHANNELS {
+        for thread in ThreadIter::<&Arc<Http>>::stream(&context.http, ChannelId::new(channel))
+            .take_while(|result| {
+                let output = result.is_ok();
+                async move { output }
+            })
+            .collect::<Vec<_>>().await {
+            let thread = thread?;
+
+            update_channel(thread.id, handler.clone(), context.http.clone()).await?;
+        }
         update_channel(ChannelId::new(channel), handler.clone(), context.http.clone()).await?;
     }
     println!("Done updating backlog!");
@@ -42,4 +50,59 @@ async fn update_channel(channel: ChannelId, handler: Handler, http: Arc<Http>) -
     stream::iter(output.into_iter().filter_map(Result::ok))
         .for_each(|message| handler.handle_message(&http, message)).await;
     Ok(())
+}
+
+#[derive(Clone, Debug)]
+pub struct ThreadIter<H: AsRef<Http>> {
+    http: H,
+    channel_id: ChannelId,
+    buffer: Vec<GuildChannel>,
+    before: Option<Timestamp>,
+    tried_fetch: bool,
+}
+
+impl<H: AsRef<Http>> ThreadIter<H> {
+    fn new(http: H, channel_id: ChannelId) -> Self {
+        Self {
+            http,
+            channel_id,
+            buffer: Vec::new(),
+            before: None,
+            tried_fetch: false,
+        }
+    }
+
+    async fn refresh(&mut self) -> serenity::Result<()> {
+        let grab_size = 100;
+
+        self.buffer = self.channel_id.get_archived_public_threads(self.http.as_ref(), self.before, Some(grab_size))
+            .await?.threads.into_iter().collect();
+
+        self.buffer.reverse();
+
+        self.before = self.buffer.first().map(|m| m.thread_metadata.unwrap().archive_timestamp.unwrap());
+
+        self.tried_fetch = true;
+
+        Ok(())
+    }
+
+    pub fn stream(
+        http: impl AsRef<Http>,
+        channel_id: ChannelId,
+    ) -> impl Stream<Item =serenity::Result<GuildChannel>> {
+        let init_state = ThreadIter::new(http, channel_id);
+
+        futures::stream::unfold(init_state, |mut state| async {
+            if state.buffer.is_empty() && state.before.is_some() || !state.tried_fetch {
+                if let Err(error) = state.refresh().await {
+                    println!("Err: {error:?}");
+                    return Some((Err(error), state));
+                }
+            }
+
+            // the resultant stream goes from newest to oldest.
+            state.buffer.pop().map(|entry| (Ok(entry), state))
+        })
+    }
 }
