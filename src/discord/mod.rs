@@ -59,10 +59,16 @@ impl Handler {
                 //send_response(&http, &message, &"Failed to upload file! Size over 20MB limit!").await;
                 continue
             }
+            if message.channel_id == 1278791499672195095 {
+                println!("Found funky zip");
+            }
             let file = attachment.download().await;
             match timeout(Duration::from_millis(5000), self.upload_map(file, message.author.id.into())).await {
                 Ok(result) => match result {
                     Ok(_link) => {
+                        if message.channel_id == 1278791499672195095 {
+                            println!("Done!");
+                        }
                         /*send_response(&http, &message, &format!("Map uploaded! Try it at https://beatblockbrowser.me/search.html?{link}")).await;
                         if let Err(why) = message.react(&http, ReactionType::Unicode("🔼".to_string())).await {
                             println!("Error sending message: {why:?}");
