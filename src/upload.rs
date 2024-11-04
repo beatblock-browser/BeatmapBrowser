@@ -28,13 +28,15 @@ use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 use uuid::Uuid;
 
-pub const MAX_SIZE: u32 = 20000000;
+pub const MAX_SIZE: u32 = 200000000;
 const SUPPORTED_FORMATS: [ImageFormat; 3] = [ImageFormat::Png, ImageFormat::Jpeg, ImageFormat::Bmp];
 
 #[derive(Error, Debug)]
 pub enum UploadError {
     #[error("Expected a multi-part form!")]
     ArgumentError(),
+    #[error("Unknown archive type, please submit a zip or rar!")]
+    ArchiveTypeError(),
     #[error("Error with multi-part form!")]
     KnownArgumentError(Error),
     #[error("Database error")]
@@ -65,7 +67,7 @@ impl UploadError {
             UploadError::DatabaseError(_) | UploadError::UnknownDatabaseError(_) | UploadError::ZipError(_) |
             UploadError::IOError(_) | UploadError::TimeoutError(_) | UploadError::ZipDownloadError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             UploadError::ArgumentError() | UploadError::KnownArgumentError(_) | UploadError::AuthError(_) | UploadError::FormError(_) |
-            UploadError::SongNameError(_) => StatusCode::BAD_REQUEST,
+            UploadError::SongNameError(_) | UploadError::ArchiveTypeError() => StatusCode::BAD_REQUEST,
             UploadError::Ratelimited() => StatusCode::TOO_MANY_REQUESTS
         }
     }
