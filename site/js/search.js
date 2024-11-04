@@ -16,7 +16,7 @@ function handleUpvote(event) {
 }
 
 // Function to display search results
-async function displaySearchResults(params) {
+async function displaySearchResults() {
     const resultsContainer = document.getElementById('search-results');
     const noResultsContainer = document.getElementById('no-results');
     const template = document.getElementById('search-result-template');
@@ -29,7 +29,7 @@ async function displaySearchResults(params) {
         // Fetch data from the /api/search endpoint
         let response;
         try {
-             response = await fetch(`/api/search${params}`, {
+             response = await fetch(`/api/search${window.location.search}`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json'
@@ -104,6 +104,6 @@ async function displaySearchResults(params) {
 }
 
 // Initialize search results on page load
-document.addEventListener('DOMContentLoaded', function() {
-    displaySearchResults(window.location.search);
+document.addEventListener('FinishInline', function() {
+    displaySearchResults();
 });
