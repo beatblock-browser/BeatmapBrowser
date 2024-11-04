@@ -74,9 +74,9 @@ async function displaySearchResults(params) {
 
                 // Populate the clone with actual data
                 clone.querySelector('.card-title').textContent = map.song;
-                clone.querySelectorAll('.card-text')[0].innerHTML = map.artist;
-                clone.querySelectorAll('.card-text')[1].innerHTML = map.charter;
-                clone.querySelectorAll('.card-text')[2].innerHTML = map.difficulties.map(d => d.display).join(", ");
+                clone.querySelectorAll('.card-text')[0].textContent = map.artist;
+                clone.querySelectorAll('.card-text')[1].textContent = map.charter;
+                clone.querySelectorAll('.card-text')[2].textContent = map.difficulties.map(d => d.display).join(", ");
                 if (map.image != null) {
                     clone.querySelector('img').src = 'output/' + map.image;
                 } else {
