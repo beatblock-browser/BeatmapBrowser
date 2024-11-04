@@ -47,8 +47,10 @@ async fn update_channel(channel: ChannelId, handler: Handler, http: Arc<Http>) -
             async move { value }
         })
         .collect::<Vec<_>>().await;
-    stream::iter(output.into_iter().filter_map(Result::ok))
-        .for_each(|message| handler.handle_message(&http, message)).await;
+    if !stream::iter(output.into_iter().filter_map(Result::ok))
+        .any(|message| handler.handle_message(&http, message)).await {
+        println!("Failed for thread {}", channel);
+    }
     Ok(())
 }
 

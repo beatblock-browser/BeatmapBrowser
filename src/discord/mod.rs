@@ -49,13 +49,15 @@ impl EventHandler for Handler {
 }
 
 impl Handler {
-    pub async fn handle_message(&self, _http: &Arc<Http>, message: Message) {
+    pub async fn handle_message(&self, _http: &Arc<Http>, message: Message) -> bool {
+        let mut found = false;
         for attachment in &message.attachments {
             if !attachment.filename.ends_with(".zip") && !attachment.filename.ends_with(".rar") {
                 continue
             }
 
             if attachment.size > MAX_SIZE {
+                println!("Skippzed massive file {}: {}", attachment.filename, attachment.url);
                 //send_response(&http, &message, &"Failed to upload file! Size over 20MB limit!").await;
                 continue
             }
@@ -64,6 +66,7 @@ impl Handler {
             match timeout(Duration::from_millis(5000), self.upload_map(file, message.author.id.into())).await {
                 Ok(result) => match result {
                     Ok(_link) => {
+                        found = true;
                         /*send_response(&http, &message, &format!("Map uploaded! Try it at https://beatblockbrowser.me/search.html?{link}")).await;
                         if let Err(why) = message.react(&http, ReactionType::Unicode("🔼".to_string())).await {
                             println!("Error sending message: {why:?}");
@@ -83,6 +86,7 @@ impl Handler {
                 }
             }
         }
+        return found;
     }
     
     pub async fn upload_map(&self, file: Result<Vec<u8>, serenity::Error>, user: u64) -> Result<String, UploadError> {
