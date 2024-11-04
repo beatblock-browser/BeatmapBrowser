@@ -6,6 +6,9 @@ cd /home
 sudo apt-get install git-lfs
 git lfs install
 git clone git@github.com:BigBadE/BeatmapBrowser.git
+cd BeatmapBrowser
+git submodule init
+git submodule update
 `
 
 Install Rust: 
