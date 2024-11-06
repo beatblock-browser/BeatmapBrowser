@@ -1,18 +1,17 @@
 mod parsing;
-mod body;
-mod database;
-mod search;
-mod upload;
 mod discord;
-mod ratelimiter;
+mod api;
+mod util;
 
-use crate::body::EitherBody;
-use crate::database::connect;
+use crate::api::search::search_database;
+use crate::api::upload::upload;
+use crate::api::upvote::{upvote, upvote_list};
 use crate::discord::run_bot;
-use crate::ratelimiter::{Ratelimiter, SiteAction, UniqueIdentifier};
-use crate::search::search_database;
-use crate::upload::upload;
-use anyhow::Error;
+use crate::util::body::EitherBody;
+use crate::util::database::connect;
+use crate::util::ratelimiter::{Ratelimiter, UniqueIdentifier};
+use crate::util::to_weberr;
+use anyhow::{Context, Error};
 use firebase_auth::FirebaseAuth;
 use http_body_util::Full;
 use hyper::body::Bytes;
@@ -24,7 +23,7 @@ use hyper_staticfile::Static;
 use hyper_util::rt::{TokioIo, TokioTimer};
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::{Arc, LockResult, Mutex};
+use std::sync::{Arc, Mutex};
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
 use tokio::net::TcpListener;
@@ -46,15 +45,10 @@ where
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
 
-    let site = Static::new(Path::new("site/"));
-    let db = connect().await?;
-
-    let firebase_auth = FirebaseAuth::new("beatblockbrowser").await;
-
     let data = SiteData {
-        site,
-        db,
-        auth: firebase_auth,
+        site: Static::new(Path::new("site/")),
+        db: connect().await?,
+        auth: FirebaseAuth::new("beatblockbrowser").await,
         ratelimiter: Arc::new(Mutex::new(Ratelimiter::new())),
     };
 
@@ -63,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = TcpListener::bind(addr)
         .await
         .expect("Failed to create TCP listener");
-    eprintln!("Server running on https://{}/", addr);
+    eprintln!("Server running on http://{}/", addr);
     loop {
         match handle_connection(&listener, data.clone()).await {
             Ok(()) => {}
@@ -114,48 +108,20 @@ async fn handle_request(request: Request<hyper::body::Incoming>, ip: SocketAddr,
         SocketAddr::V4(ip) => UniqueIdentifier::Ipv4(ip.ip().clone()),
         SocketAddr::V6(ip) => UniqueIdentifier::Ipv6(ip.ip().clone())
     };
-    Ok(match (request.method(), request.uri().path()) {
-        (&Method::GET, "/api/search") => {
-            if data.ratelimiter.lock().ignore_poison().check_limited(SiteAction::Search, &identifier) {
-                build_request((StatusCode::TOO_MANY_REQUESTS, "Searched too many times in one second!".to_string()))?
-            } else {
-                let temp = build_request(match search_database(request.uri().query().unwrap_or(""), data.db).await {
-                    Ok(maps) => (StatusCode::default(), serde_json::to_string(&maps).expect("Failed to serialize maps")),
-                    Err(error) => {
-                        println!("Search Error: {:?}", error);
-                        (error.get_code(), error.to_string())
-                    }
-                })?;
-                temp
-            }
+    let request_path = request.uri().path().to_string();
+    let method = match (request.method(), &*request_path) {
+        (&Method::GET, "/api/search") => to_weberr(search_database(request, identifier, &data).await),
+        (&Method::POST, "/api/upvote_list") => to_weberr(upvote_list(request, identifier, &data).await),
+        (&Method::POST, "/api/upload") => to_weberr(upload(request, identifier, &data).await),
+        (&Method::POST, "/api/upvote") => to_weberr(upvote(request, identifier, &data).await),
+        _ => return Ok(data.site.serve(request).await.context("Failed to serve static file")?.map(|body| body.into()))
+    };
+
+    Ok(match method {
+        Ok(query) => Builder::new().status(StatusCode::OK).body(Full::new(Bytes::from(format!("{query}"))).into()),
+        Err(error) => {
+            println!("Error with {}: {:?}", request_path, error);
+            build_request((error.get_code(), error.to_string()))
         }
-        (&Method::POST, "/api/upload") => match upload(request, identifier, &data).await {
-            Ok(query) => Builder::new().status(StatusCode::OK).body(Full::new(Bytes::from(format!("{query}"))).into()),
-            Err(error) => {
-                println!("Upload Error: {:?}", error);
-                build_request((error.get_code(), error.to_string()))
-            }
-        }?,
-        // Default to static files
-        _ => {
-            data.site.serve(request).await.expect("Failed to serve static file").map(|body| body.into())
-        }
-    })
-}
-
-pub trait LockResultExt {
-    type Guard;
-
-    /// Returns the lock guard even if the mutex is [poisoned].
-    ///
-    /// [poisoned]: https://doc.rust-lang.org/stable/std/sync/struct.Mutex.html#poisoning
-    fn ignore_poison(self) -> Self::Guard;
-}
-
-impl<Guard> LockResultExt for LockResult<Guard> {
-    type Guard = Guard;
-
-    fn ignore_poison(self) -> Guard {
-        self.unwrap_or_else(|e| e.into_inner())
-    }
+    }?)
 }

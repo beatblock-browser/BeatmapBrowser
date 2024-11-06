@@ -1,16 +1,33 @@
 // Function to handle upvoting
-function handleUpvote(event) {
+import {runLoggedIn, showError} from "./authentication.js";
+
+async function handleUpvote(event, id) {
     const button = event.currentTarget;
     const countSpan = button.querySelector('.upvote-count');
     let count = parseInt(countSpan.textContent, 10);
     count += 1;
     countSpan.textContent = count;
 
-    // Optional: Change button appearance after upvote
-    button.classList.remove('btn-outline-light');
-    button.classList.add('btn-success');
-    button.innerHTML = `<span class="bi bi-hand-thumbs-up-fill"></span> ${count}`;
+    await runLoggedIn(async function (idToken) {
+        const response = await fetch('/api/upvote', {
+            method: 'POST',
+            body: JSON.stringify({
+                'firebaseToken': idToken,
+                'mapId': id
+            })
+        });
+        const result = await response.text();
 
+        if (response.ok) {
+            // Optional: Change button appearance after upvote
+            button.classList.remove('btn-outline-light');
+            button.classList.add('btn-success');
+            button.innerHTML = `<span class="bi bi-hand-thumbs-up-fill"></span> ${count}`;
+        } else {
+            console.error('Error upvoting: ', response)
+            showError(result || 'An error occurred when upvoting.');
+        }
+    });
     // Disable the button to prevent multiple upvotes
     button.disabled = true;
 }
@@ -24,12 +41,41 @@ async function displaySearchResults() {
     try {
         // Show a loading indicator (optional)
         resultsContainer.innerHTML = '<p>Loading results...</p>';
-        noResultsContainer.style.display = 'none';
+
+        // Initialize the resolver outside the functions to make it accessible to both
+        let resolveSignal;
+
+        // Create a Promise that Function A will await
+        const signalPromise = new Promise((resolve) => {
+            resolveSignal = resolve;
+        });
+
+        let upvoted_list = runLoggedIn(async function (idToken) {
+            let upvoted = await fetch(`/api/upvote_list`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    'firebaseToken': idToken,
+                })
+            });
+            await signalPromise;
+
+            let json = await upvoted.json();
+            for (let i = 0; i < json.length; i++) {
+                let element = json[i];
+                let map = document.querySelector(`.map-${element.id['String']}`);
+                if (map != null) {
+                    let button = map.querySelector('.upvote-button');
+                    button.classList.remove('btn-outline-light');
+                    button.classList.add('btn-success');
+                    button.innerHTML = `<span class="bi bi-hand-thumbs-up-fill"></span> ${button.textContent}`
+                }
+            }
+        }, true)
 
         // Fetch data from the /api/search endpoint
         let response;
         try {
-             response = await fetch(`/api/search${window.location.search}`, {
+            response = await fetch(`/api/search${window.location.search}`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json'
@@ -39,24 +85,15 @@ async function displaySearchResults() {
             console.log(e);
         }
 
-        if (response == null) {
+        if (response != null && response.status === 429) {
             resultsContainer.innerHTML = '';
-            document.getElementById('search-error').classList.remove('invisible');
-            document.getElementById('search-error-text').textContent = "Failed to search, see console log";
+            showError('Please stop spamming search requests!');
             return
         }
 
-        if (response.status === 429) {
+        if (response == null || !response.ok) {
             resultsContainer.innerHTML = '';
-            document.getElementById('search-error').classList.remove('invisible');
-            document.getElementById('search-error-text').innerHTML = 'Please stop spamming search requests!';
-            return
-        }
-
-        if (!response.ok) {
-            resultsContainer.innerHTML = '';
-            document.getElementById('search-error').classList.remove('invisible');
-            document.getElementById('search-error-text').textContent = 'Failed to search, see console log';
+            showError('Failed to search, see console log');
             return
         }
 
@@ -71,7 +108,7 @@ async function displaySearchResults() {
             beatMaps.forEach(map => {
                 // Clone the template
                 const clone = template.content.cloneNode(true);
-
+                clone.querySelector('.card').classList.add("map-" + map.id.id['String']);
                 // Populate the clone with actual data
                 clone.querySelector('.card-title').textContent = map.song;
                 clone.querySelectorAll('.card-text')[0].textContent = map.artist;
@@ -85,7 +122,7 @@ async function displaySearchResults() {
                 clone.querySelector('a.btn').href = 'output/' + map.download;
                 const button = clone.querySelector('.upvote-button');
                 button.querySelector('.upvote-count').textContent = map.upvotes;
-                button.addEventListener('click', handleUpvote);
+                button.addEventListener('click', (event) => handleUpvote(event, map.id));
 
                 // Append the clone to the results container
                 resultsContainer.appendChild(clone);
@@ -95,15 +132,17 @@ async function displaySearchResults() {
             noResultsContainer.classList.remove('invisible');
             resultsContainer.innerHTML = '';
         }
+
+        resolveSignal()
+        await upvoted_list;
     } catch (error) {
         console.error('Error fetching search results:', error);
         resultsContainer.innerHTML = '';
-        document.getElementById('search-error').classList.remove('invisible');
-        document.getElementById('search-error-text').textContent = 'An error occurred while fetching search results. Please try again later.';
+        showError('An error occurred while fetching search results. Please try again later.');
     }
 }
 
 // Initialize search results on page load
-document.addEventListener('FinishInline', function() {
-    displaySearchResults();
+document.addEventListener('FinishInline', async function () {
+    await displaySearchResults();
 });

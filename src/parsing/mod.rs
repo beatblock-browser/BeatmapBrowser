@@ -1,12 +1,12 @@
 use crate::parsing::rar::RarArchiveReader;
 use crate::parsing::zip::ZipArchiveReader;
-use crate::upload::{UploadError, MAX_SIZE};
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use std::io::{Cursor, Read, Write};
 use std::path::{Component, PathBuf};
 use ::zip::{ZipArchive, ZipWriter};
 use ::zip::write::SimpleFileOptions;
+use crate::api::upload::{UploadError, MAX_SIZE};
 
 pub mod zip;
 pub mod rar;

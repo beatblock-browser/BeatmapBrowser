@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use crate::discord::{Handler, WHITELISTED_CHANNELS, WHITELISTED_GUILDS};
 use anyhow::Error;
 use futures::Stream;
@@ -33,7 +34,7 @@ pub async fn update_backlog(handler: &Handler, context: &Context) -> Result<(), 
 }
 
 async fn update_channel(channel: ChannelId, handler: Handler, http: Arc<Http>) -> Result<(), Error> {
-    let output: Vec<Result<Message, serenity::Error>> = channel.messages_iter(&http)
+    let output: Vec<Message> = channel.messages_iter(&http)
         .take_while(|message| {
             let value = message.as_ref()
                 .map(|inner| {
@@ -46,10 +47,14 @@ async fn update_channel(channel: ChannelId, handler: Handler, http: Arc<Http>) -
                 .unwrap_or(true);
             async move { value }
         })
+        .filter_map(|value| {
+            async move { value.ok() }
+        })
         .collect::<Vec<_>>().await;
-    if !stream::iter(output.into_iter().filter_map(Result::ok))
-        .any(|message| handler.handle_message(&http, message)).await {
-        println!("Failed for thread {}", channel);
+    let upvotes = (output.iter().map(|msg| msg.author.id).collect::<HashSet<_>>().iter().count() as u64).max(1) - 1;
+    if !stream::iter(output)
+        .any(|message| handler.handle_message(&http, message, upvotes)).await {
+        //println!("Failed for thread {}", channel);
     }
     Ok(())
 }

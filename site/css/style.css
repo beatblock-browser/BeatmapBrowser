@@ -50,3 +50,27 @@ body {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5); /* Enhanced shadow on hover */
     transform: translateY(-2px); /* Slight upward movement on hover */
 }
+
+/* Style for the error message */
+.error-message {
+    position: fixed; /* Makes the div float over the content */
+    top: 20px;       /* Distance from the top */
+    right: 5%;     /* Distance from the right */
+    left: 5%;
+    width: 90%;
+    background-color: #f8d7da; /* Light red background */
+    color: #721c24;            /* Dark red text */
+    border: 1px solid #f5c6cb; /* Red border */
+    border-radius: 4px;        /* Rounded corners */
+    padding: 15px 20px;        /* Padding inside the box */
+    z-index: 1000;             /* Ensures it appears above other elements */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+    opacity: 1;                /* Full opacity */
+    transition: opacity 0.5s ease-out, top 0.5s ease-out; /* Smooth transition for fade-out */
+}
+
+/* Fade-out effect */
+.error-message.fade-out {
+    opacity: 0;
+    top: 0px; /* Optional: Move the message up as it fades out */
+}

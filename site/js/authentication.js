@@ -52,8 +52,16 @@ if (googleSignInBtn != null) {
     });
 }
 
+// Initialize the resolver outside the functions to make it accessible to both
+let resolveSignal;
+
+// Create a Promise that Function A will await
+const signalPromise = new Promise((resolve) => {
+    resolveSignal = resolve;
+});
+
 // Authentication State Listener
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
     const loginNavLink = document.getElementById('loginNavLink');
     const uploadNavLink = document.getElementById('uploadNavLink');
     const accountNavLink = document.getElementById('accountNavLink');
@@ -72,4 +80,45 @@ onAuthStateChanged(auth, (user) => {
         uploadNavLink.classList.add('d-none');
         accountNavLink.classList.add('d-none');
     }
+    await resolveSignal();
 });
+
+export async function runLoggedIn(ifLoggedIn, ignoreSignedOut = false) {
+    await signalPromise;
+    const user = auth.currentUser;
+    if (user) {
+        user.getIdToken(true).then(ifLoggedIn).catch(function (error) {
+            console.error('Error fetching ID token:', error);
+            showError('Error authenticating, please sign in again or ask for help in the discord.');
+        });
+    } else if (!ignoreSignedOut) {
+        showError('This action requires being signed in!');
+    }
+}
+
+export function showError(message, duration = 3000) { // duration in milliseconds
+    const errorDiv = document.getElementById('search-error');
+    let errorText = document.getElementById('search-error-text');
+    if (errorText == null) {
+        errorText = errorDiv;
+    }
+
+    // Set the error message text
+    errorText.textContent = message;
+
+    // Remove the 'invisible' class to display the error message
+    errorDiv.classList.remove('invisible');
+
+    // Ensure the 'fade-out' class is not present
+    errorDiv.classList.remove('fade-out');
+
+    // After the specified duration, add the 'fade-out' class to initiate the fade-out effect
+    setTimeout(() => {
+        errorDiv.classList.add('fade-out');
+
+        // After the transition duration, add the 'invisible' class to hide the element
+        setTimeout(() => {
+            errorDiv.classList.add('invisible');
+        }, 500); // Matches the CSS transition duration (0.5s)
+    }, duration);
+}
