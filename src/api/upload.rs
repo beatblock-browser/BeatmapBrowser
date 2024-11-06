@@ -1,8 +1,4 @@
-use crate::database::{BeatMap, User};
 use crate::parsing::{check_archive, get_parser, parse_archive, FileData};
-use crate::ratelimiter::{Ratelimiter, SiteAction, UniqueIdentifier};
-use crate::search::SearchArguments;
-use crate::{LockResultExt, SiteData};
 use anyhow::Error;
 use chrono::{DateTime, Utc};
 use firebase_auth::FirebaseUser;
@@ -27,6 +23,11 @@ use thiserror::Error;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 use uuid::Uuid;
+use crate::api::search::SearchArguments;
+use crate::SiteData;
+use crate::util::ratelimiter::{Ratelimiter, SiteAction, UniqueIdentifier};
+use crate::util::{LockResultExt, WebError};
+use crate::util::database::{BeatMap, User};
 
 pub const MAX_SIZE: u32 = 200000000;
 const SUPPORTED_FORMATS: [ImageFormat; 3] = [ImageFormat::Png, ImageFormat::Jpeg, ImageFormat::Bmp];
@@ -61,8 +62,8 @@ pub enum UploadError {
     Ratelimited()
 }
 
-impl UploadError {
-    pub fn get_code(&self) -> StatusCode {
+impl WebError for UploadError {
+    fn get_code(&self) -> StatusCode {
         match self {
             UploadError::DatabaseError(_) | UploadError::UnknownDatabaseError(_) | UploadError::ZipError(_) |
             UploadError::IOError(_) | UploadError::TimeoutError(_) | UploadError::ZipDownloadError(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -96,27 +97,27 @@ pub async fn upload(request: Request<Incoming>, identifier: UniqueIdentifier, da
     }
     let form = get_form(request).await?;
     let user: FirebaseUser = data.auth.verify(&form.firebase_token).map_err(|err| UploadError::AuthError(err.to_string()))?;
-    let id = get_or_create_user(data.db.query(format!("SELECT id FROM users WHERE google_id == '{}'", user.user_id))
-        .await?.take::<Option<UserId>>(0)?, &data.db, User {
+    let id = get_or_create_user(
+        format!("SELECT * FROM users WHERE google_id == '{}'", user.user_id), &data.db, User {
         google_id: Some(user.user_id),
         ..Default::default()
-    }).await?;
-    timeout(Duration::from_millis(1000), upload_beatmap(form.beatmap, &data.db, &data.ratelimiter, identifier, id)).await?
+    }, || UploadError::UnknownDatabaseError("Failed to create a user in the users database".to_string())).await?;
+    timeout(Duration::from_millis(1000), upload_beatmap(form.beatmap, &data.db, &data.ratelimiter, identifier, id.id.unwrap(), 0)).await?
 }
 
-pub async fn get_or_create_user(id: Option<UserId>, db: &Surreal<Client>, default_user: User) -> Result<Thing, UploadError> {
-    Ok(if let Some(id) = id {
-        id.id
+pub async fn get_or_create_user<F: Fn() -> E, E: WebError + From<surrealdb::Error>>(query: String, db: &Surreal<Client>, default_user: User, error: F) -> Result<User, E> {
+    Ok(if let Some(id) = db.query(query).await?.take::<Option<User>>(0)? {
+        id
     } else {
         let Some(user): Option<User> = db.create("users").content(default_user).await? else {
-            return Err(UploadError::UnknownDatabaseError("Failed to create a user in the users database".to_string()));
+            return Err(error());
         };
-        user.id.unwrap()
+        user
     })
 }
 
 pub async fn upload_beatmap(mut beatmap: Vec<u8>, db: &Surreal<Client>, ratelimiter: &Arc<Mutex<Ratelimiter>>,
-                            ip: UniqueIdentifier, charter_id: Thing) -> Result<String, UploadError> {
+                            ip: UniqueIdentifier, charter_id: Thing, upvotes: u64) -> Result<String, UploadError> {
     let mut file_data = parse_archive(get_parser(&mut beatmap)?.deref_mut()).map_err(UploadError::ZipError)?;
     check_archive(&mut beatmap).map_err(UploadError::ZipError)?;
 
@@ -142,7 +143,7 @@ pub async fn upload_beatmap(mut beatmap: Vec<u8>, db: &Surreal<Client>, ratelimi
         charter_uid: Some(charter_id.to_string()),
         image: file_data.image.as_ref().map(|_| format!("{}.png", uuid)),
         download: format!("{}.zip", uuid),
-        upvotes: 0,
+        upvotes,
         upload_date: DateTime::from(SystemTime::now()),
         update_date: DateTime::from(SystemTime::now()),
         id: None,

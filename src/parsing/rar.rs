@@ -1,5 +1,4 @@
 use crate::parsing::ArchiveParser;
-use crate::upload::MAX_SIZE;
 use anyhow::{Context, Error};
 use std::env::temp_dir;
 use std::io::{Cursor, Write};
@@ -8,6 +7,7 @@ use std::{fs, mem};
 use unrar::{Archive, CursorBeforeFile, CursorBeforeHeader, OpenArchive, Process};
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
+use crate::api::upload::MAX_SIZE;
 
 pub struct RarArchiveReader<'a> {
     temp_file: PathBuf,

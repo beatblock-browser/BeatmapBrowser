@@ -73,13 +73,14 @@ impl Limits {
     }
 }
 
-pub const ACTIONS: [SiteAction; 3] = [SiteAction::Search, SiteAction::Upload, SiteAction::Update];
+pub const ACTIONS: [SiteAction; 4] = [SiteAction::Search, SiteAction::Upload, SiteAction::Update, SiteAction::UpvoteList];
 
 #[derive(Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum SiteAction {
     Search,
     Update,
-    Upload
+    Upload,
+    UpvoteList
 }
 
 impl SiteAction {
@@ -88,6 +89,7 @@ impl SiteAction {
             SiteAction::Search => 1,
             SiteAction::Update => 60,
             SiteAction::Upload => 60*60*24,
+            SiteAction::UpvoteList => 1
         }
     }
 }

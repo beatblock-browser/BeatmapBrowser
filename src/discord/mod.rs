@@ -1,9 +1,10 @@
 mod backlogger;
 
-use crate::database::User;
+use crate::api::upload::{get_or_create_user, upload_beatmap, UploadError, MAX_SIZE};
 use crate::discord::backlogger::update_backlog;
-use crate::ratelimiter::{Ratelimiter, UniqueIdentifier};
-use crate::upload::{get_or_create_user, upload_beatmap, UploadError, UserId, MAX_SIZE};
+use crate::util::database::User;
+use crate::util::ratelimiter::{Ratelimiter, UniqueIdentifier};
+use crate::util::LockResultExt;
 use serenity::all::{Http, Ready};
 use serenity::async_trait;
 use serenity::model::channel::Message;
@@ -13,7 +14,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use surrealdb::Surreal;
 use tokio::time::timeout;
-use crate::LockResultExt;
 
 // Real server
 pub const WHITELISTED_GUILDS: [u64; 1] = [756193219737288836];
@@ -40,7 +40,7 @@ impl EventHandler for Handler {
             return;
         }
 
-        self.handle_message(&context.http, message).await;
+        self.handle_message(&context.http, message, 0).await;
     }
 
     async fn ready(&self, ctx: Context, _data_about_bot: Ready) {
@@ -49,7 +49,7 @@ impl EventHandler for Handler {
 }
 
 impl Handler {
-    pub async fn handle_message(&self, _http: &Arc<Http>, message: Message) -> bool {
+    pub async fn handle_message(&self, _http: &Arc<Http>, message: Message, upvotes: u64) -> bool {
         let mut found = false;
         for attachment in &message.attachments {
             if !attachment.filename.ends_with(".zip") && !attachment.filename.ends_with(".rar") {
@@ -63,7 +63,7 @@ impl Handler {
             }
 
             let file = attachment.download().await;
-            match timeout(Duration::from_millis(5000), self.upload_map(file, message.author.id.into())).await {
+            match timeout(Duration::from_millis(5000), self.upload_map(file, message.author.id.into(), upvotes)).await {
                 Ok(result) => match result {
                     Ok(_link) => {
                         found = true;
@@ -86,17 +86,16 @@ impl Handler {
                 }
             }
         }
-        return found;
+        found
     }
     
-    pub async fn upload_map(&self, file: Result<Vec<u8>, serenity::Error>, user: u64) -> Result<String, UploadError> {
-        let id = get_or_create_user(self.db.query(format!("SELECT id FROM users WHERE discord_id == {}", user))
-                                      .await?.take::<Option<UserId>>(0)?, &self.db, User {
-            discord_id: Some(user),
+    pub async fn upload_map(&self, file: Result<Vec<u8>, serenity::Error>, user_id: u64, upvotes: u64) -> Result<String, UploadError> {
+        let user = get_or_create_user(format!("SELECT * FROM users WHERE discord_id == {}", user_id), &self.db, User {
+            discord_id: Some(user_id),
             ..Default::default()
-        }).await?;
+        }, || UploadError::UnknownDatabaseError("Failed to create a user in the users database".to_string())).await?;
         self.ratelimit.lock().ignore_poison().clear();
-        upload_beatmap(file?, &self.db, &self.ratelimit, UniqueIdentifier::Discord(user), id).await
+        upload_beatmap(file?, &self.db, &self.ratelimit, UniqueIdentifier::Discord(user_id), user.id.unwrap(), upvotes).await
     }
 }
 
