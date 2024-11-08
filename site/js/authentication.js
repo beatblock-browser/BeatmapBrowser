@@ -1,6 +1,11 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+    getAuth,
+    GoogleAuthProvider,
+    onAuthStateChanged,
+    signInWithPopup
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -72,6 +77,7 @@ onAuthStateChanged(auth, async (user) => {
         // Show "Upload" and "Account" links
         uploadNavLink.classList.remove('d-none');
         accountNavLink.classList.remove('d-none');
+        await resolveSignal();
     } else {
         console.log('No user is signed in.');
         // Show "Log In" link
@@ -79,11 +85,11 @@ onAuthStateChanged(auth, async (user) => {
         // Hide "Upload" and "Account" links
         uploadNavLink.classList.add('d-none');
         accountNavLink.classList.add('d-none');
+        await resolveSignal();
     }
-    await resolveSignal();
 });
 
-export async function runLoggedIn(ifLoggedIn, ignoreSignedOut = false) {
+export async function runLoggedIn(ifLoggedIn, otherwise = () => showError('This action requires being signed in!')) {
     await signalPromise;
     const user = auth.currentUser;
     if (user) {
@@ -91,8 +97,8 @@ export async function runLoggedIn(ifLoggedIn, ignoreSignedOut = false) {
             console.error('Error fetching ID token:', error);
             showError('Error authenticating, please sign in again or ask for help in the discord.');
         });
-    } else if (!ignoreSignedOut) {
-        showError('This action requires being signed in!');
+    } else {
+        otherwise()
     }
 }
 

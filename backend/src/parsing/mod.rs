@@ -6,7 +6,8 @@ use std::io::{Cursor, Read, Write};
 use std::path::{Component, PathBuf};
 use ::zip::{ZipArchive, ZipWriter};
 use ::zip::write::SimpleFileOptions;
-use crate::api::upload::{UploadError, MAX_SIZE};
+use crate::api::APIError;
+use crate::api::upload::MAX_SIZE;
 
 pub mod zip;
 pub mod rar;
@@ -77,16 +78,16 @@ pub fn check_path(path: &PathBuf) -> Result<(), Error> {
     }
 }
 
-pub fn get_parser<'a>(beatmap: &'a mut Vec<u8>) -> Result<Box<dyn ArchiveParser + 'a>, UploadError> {
+pub fn get_parser<'a>(beatmap: &'a mut Vec<u8>) -> Result<Box<dyn ArchiveParser + 'a>, APIError> {
     Ok(if beatmap.starts_with("PK".as_bytes()) {
-        Box::new(ZipArchiveReader::new(beatmap).map_err(|err| UploadError::ZipError(err))?)
+        Box::new(ZipArchiveReader::new(beatmap).map_err(|err| APIError::ZipError(err))?)
     } else if beatmap.starts_with("Rar".as_bytes()) {
-        Box::new(RarArchiveReader::new(beatmap).map_err(|err| UploadError::ZipError(err))?)
+        Box::new(RarArchiveReader::new(beatmap).map_err(|err| APIError::ZipError(err))?)
     } else {
         if beatmap.len() > 3 {
             println!("Bad archive {:?}", &beatmap[0..3]);
         }
-        return Err(UploadError::ArchiveTypeError())
+        return Err(APIError::ArchiveTypeError())
     })
 }
 

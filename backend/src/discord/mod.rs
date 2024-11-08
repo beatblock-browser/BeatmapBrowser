@@ -1,10 +1,9 @@
 mod backlogger;
 
-use crate::api::upload::{get_or_create_user, upload_beatmap, UploadError, MAX_SIZE};
+use crate::api::upload::{upload_beatmap, MAX_SIZE};
 use crate::discord::backlogger::update_backlog;
-use crate::util::database::User;
 use crate::util::ratelimiter::{Ratelimiter, UniqueIdentifier};
-use crate::util::LockResultExt;
+use crate::util::{get_user, LockResultExt};
 use serenity::all::{Http, Ready};
 use serenity::async_trait;
 use serenity::model::channel::Message;
@@ -14,6 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use surrealdb::Surreal;
 use tokio::time::timeout;
+use crate::api::APIError;
 
 // Real server
 pub const WHITELISTED_GUILDS: [u64; 1] = [756193219737288836];
@@ -57,7 +57,7 @@ impl Handler {
             }
 
             if attachment.size > MAX_SIZE {
-                println!("Skippzed massive file {}: {}", attachment.filename, attachment.url);
+                println!("Skipped massive file {}: {}", attachment.filename, attachment.url);
                 //send_response(&http, &message, &"Failed to upload file! Size over 20MB limit!").await;
                 continue
             }
@@ -89,11 +89,8 @@ impl Handler {
         found
     }
     
-    pub async fn upload_map(&self, file: Result<Vec<u8>, serenity::Error>, user_id: u64, upvotes: u64) -> Result<String, UploadError> {
-        let user = get_or_create_user(format!("SELECT * FROM users WHERE discord_id == {}", user_id), &self.db, User {
-            discord_id: Some(user_id),
-            ..Default::default()
-        }, || UploadError::UnknownDatabaseError("Failed to create a user in the users database".to_string())).await?;
+    pub async fn upload_map(&self, file: Result<Vec<u8>, serenity::Error>, user_id: u64, upvotes: u64) -> Result<String, APIError> {
+        let user = get_user(false, user_id.to_string(), &self.db).await?;
         self.ratelimit.lock().ignore_poison().clear();
         upload_beatmap(file?, &self.db, &self.ratelimit, UniqueIdentifier::Discord(user_id), user.id.unwrap(), upvotes).await
     }

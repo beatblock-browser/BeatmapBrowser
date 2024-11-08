@@ -5,12 +5,11 @@ mod util;
 
 use crate::api::search::search_database;
 use crate::api::upload::upload;
-use crate::api::upvote::{upvote, upvote_list};
+use crate::api::upvote::{unvote, upvote};
 use crate::discord::run_bot;
 use crate::util::body::EitherBody;
 use crate::util::database::connect;
 use crate::util::ratelimiter::{Ratelimiter, UniqueIdentifier};
-use crate::util::to_weberr;
 use anyhow::{Context, Error};
 use firebase_auth::FirebaseAuth;
 use http_body_util::Full;
@@ -27,19 +26,8 @@ use std::sync::{Arc, Mutex};
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
 use tokio::net::TcpListener;
-
-#[derive(Clone)]
-pub struct TokioExecutor;
-
-impl<F> hyper::rt::Executor<F> for TokioExecutor
-where
-    F: std::future::Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    fn execute(&self, fut: F) {
-        tokio::task::spawn(fut);
-    }
-}
+use crate::api::account_data::account_data;
+use crate::api::downloaded::{download, remove};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -64,6 +52,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             Err(err) => println!("Error serving connection: {err:?}")
         }
     }
+}
+
+
+async fn handle_request(request: Request<hyper::body::Incoming>, ip: SocketAddr, data: SiteData) -> Result<Response<EitherBody>, Error> {
+    let identifier = match ip {
+        SocketAddr::V4(ip) => UniqueIdentifier::Ipv4(ip.ip().clone()),
+        SocketAddr::V6(ip) => UniqueIdentifier::Ipv6(ip.ip().clone())
+    };
+    let request_path = request.uri().path().to_string();
+    let method = match (request.method(), &*request_path) {
+        (&Method::GET, "/api/search") => search_database(request, identifier, &data).await,
+        (&Method::POST, "/api/upvote") => upvote(request, identifier, &data).await,
+        (&Method::POST, "/api/unvote") => unvote(request, identifier, &data).await,
+        (&Method::POST, "/api/download") => download(request, identifier, &data).await,
+        (&Method::POST, "/api/remove") => remove(request, identifier, &data).await,
+        (&Method::POST, "/api/account_data") => account_data(request, identifier, &data).await,
+        (&Method::POST, "/api/upload") => upload(request, identifier, &data).await,
+        _ => return Ok(data.site.serve(request).await.context("Failed to serve static file")?.map(|body| body.into()))
+    };
+
+    Ok(match method {
+        Ok(query) => Builder::new().status(StatusCode::OK).body(Full::new(Bytes::from(format!("{query}"))).into()),
+        Err(error) => {
+            println!("Error with {}: {:?}", request_path, error);
+            build_request((error.get_code(), error.to_string()))
+        }
+    }?)
 }
 
 async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(), Error> {
@@ -101,27 +116,4 @@ pub struct SiteData {
     db: Surreal<Client>,
     auth: FirebaseAuth,
     ratelimiter: Arc<Mutex<Ratelimiter>>,
-}
-
-async fn handle_request(request: Request<hyper::body::Incoming>, ip: SocketAddr, data: SiteData) -> Result<Response<EitherBody>, Error> {
-    let identifier = match ip {
-        SocketAddr::V4(ip) => UniqueIdentifier::Ipv4(ip.ip().clone()),
-        SocketAddr::V6(ip) => UniqueIdentifier::Ipv6(ip.ip().clone())
-    };
-    let request_path = request.uri().path().to_string();
-    let method = match (request.method(), &*request_path) {
-        (&Method::GET, "/api/search") => to_weberr(search_database(request, identifier, &data).await),
-        (&Method::POST, "/api/upvote_list") => to_weberr(upvote_list(request, identifier, &data).await),
-        (&Method::POST, "/api/upload") => to_weberr(upload(request, identifier, &data).await),
-        (&Method::POST, "/api/upvote") => to_weberr(upvote(request, identifier, &data).await),
-        _ => return Ok(data.site.serve(request).await.context("Failed to serve static file")?.map(|body| body.into()))
-    };
-
-    Ok(match method {
-        Ok(query) => Builder::new().status(StatusCode::OK).body(Full::new(Bytes::from(format!("{query}"))).into()),
-        Err(error) => {
-            println!("Error with {}: {:?}", request_path, error);
-            build_request((error.get_code(), error.to_string()))
-        }
-    }?)
 }

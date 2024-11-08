@@ -73,23 +73,24 @@ impl Limits {
     }
 }
 
-pub const ACTIONS: [SiteAction; 4] = [SiteAction::Search, SiteAction::Upload, SiteAction::Update, SiteAction::UpvoteList];
+pub const ACTIONS: [SiteAction; 5] = [SiteAction::Search, SiteAction::Upload, SiteAction::Update, SiteAction::UpvoteList, SiteAction::Download];
 
 #[derive(Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum SiteAction {
     Search,
+    Download,
     Update,
     Upload,
     UpvoteList
 }
 
 impl SiteAction {
+    // MUST UPDATE ACTIONS AS WELL
     pub fn get_limit(&self) -> i64 {
         match self {
-            SiteAction::Search => 1,
+            SiteAction::Search | SiteAction::Download | SiteAction::UpvoteList => 1,
             SiteAction::Update => 60,
             SiteAction::Upload => 60*60*24,
-            SiteAction::UpvoteList => 1
         }
     }
 }
