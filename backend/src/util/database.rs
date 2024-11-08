@@ -26,11 +26,11 @@ pub struct BeatMap {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct User {
     pub maps: Vec<Thing>,
+    pub downloaded: Vec<Thing>,
     pub upvoted: Vec<Thing>,
     pub id: Option<Thing>,
     pub discord_id: Option<u64>,
-    pub google_id: Option<String>,
-    pub unlinked: bool
+    pub google_id: Option<String>
 }
 
 pub async fn connect() -> surrealdb::Result<Surreal<Client>> {

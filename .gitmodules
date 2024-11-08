@@ -1,0 +1,3 @@
+[submodule "oneclick"]
+	path = oneclick
+	url = git@github.com:BigBadE/Beatblock-Oneclick.git
