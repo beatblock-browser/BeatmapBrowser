@@ -14,18 +14,19 @@ use std::collections::HashSet;
 use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use anyhow::Error;
 use surrealdb::opt::PatchOp;
 use surrealdb::Surreal;
 use tokio::time::timeout;
 use crate::util::database::{BeatMap, User};
 
 // Real server
-//pub const WHITELISTED_GUILDS: [u64; 1] = [756193219737288836];
-//pub const WHITELISTED_CHANNELS: [u64; 1] = [1244495595838640179];
+pub const WHITELISTED_GUILDS: [u64; 2] = [756193219737288836, 1277438162641223740];
+pub const WHITELISTED_CHANNELS: [u64; 2] = [1244495595838640179, 1277438949870276661];
 
 // Testing server
-pub const WHITELISTED_GUILDS: [u64; 0] = [];
-pub const WHITELISTED_CHANNELS: [u64; 1] = [1298415906388574279];
+//pub const WHITELISTED_GUILDS: [u64; 0] = [];
+//pub const WHITELISTED_CHANNELS: [u64; 1] = [1298415906388574279];
 
 #[derive(Clone)]
 struct Handler {
@@ -52,8 +53,10 @@ impl EventHandler for Handler {
             return;
         }
 
-        self.handle_message(&context.http, message, &HashSet::default())
-            .await;
+        if let Err(error) = self.handle_message(&context.http, message, &HashSet::default())
+            .await {
+            println!("Error handling message: {error:?}");
+        }
     }
 
     async fn ready(&self, ctx: Context, _data_about_bot: Ready) {
@@ -62,12 +65,21 @@ impl EventHandler for Handler {
 }
 
 impl Handler {
-    pub async fn handle_message(
+    pub async fn handle_message_dropped(
         &self,
         http: &Arc<Http>,
         message: Message,
         upvotes: &HashSet<UserId>,
     ) -> bool {
+        self.handle_message(http, message, upvotes).await.unwrap_or(false)
+    }
+
+    pub async fn handle_message(
+        &self,
+        http: &Arc<Http>,
+        message: Message,
+        upvotes: &HashSet<UserId>,
+    ) -> Result<bool, Error> {
         let mut found = false;
         for attachment in &message.attachments {
             if !attachment.filename.ends_with(".zip") && !attachment.filename.ends_with(".rar") {
@@ -79,7 +91,7 @@ impl Handler {
                     "Skipped massive file {}: {}",
                     attachment.filename, attachment.url
                 );
-                send_response(&http, &message, &"Failed to upload file! Size over 20MB limit!").await;
+                send_response(&http, &message, &"Failed to upload file! Size over 20MB limit!").await?;
                 continue;
             }
 
@@ -93,7 +105,7 @@ impl Handler {
                 Ok(result) => match result {
                     Ok(link) => {
                         found = true;
-                        send_response(&http, &message, &format!("Map uploaded! Try it at https://beatblockbrowser.me/search.html?{link}")).await;
+                        send_response(&http, &message, &format!("Map uploaded! Try it at https://beatblockbrowser.me/search.html?{link}")).await?;
                         if let Err(why) = message.react(&http, ReactionType::Unicode("✔️".to_string())).await {
                             println!("Error sending message: {why:?}");
                         }
@@ -105,7 +117,7 @@ impl Handler {
                         }*/
                     }
                     Err(err) => {
-                        send_response(&http, &message, &format!("Failed to upload file! Error: {err}")).await;
+                        send_response(&http, &message, &format!("Failed to upload file! Error: {err}")).await?;
                         println!(
                             "Upload error for {} ({}): {err:?}",
                             message.link(),
@@ -115,12 +127,12 @@ impl Handler {
                 },
                 Err(_) => {
                     println!("Timeout");
-                    send_response(&http, &message, "Failed to read the zip file! Please report this for it to sync properly").await;
+                    send_response(&http, &message, "Failed to read the zip file! Please report this for it to sync properly").await?;
                     println!("Timeout error for {}", message.link());
                 }
             }
         }
-        found
+        Ok(found)
     }
 
     pub async fn upload_map(
@@ -159,15 +171,10 @@ impl Handler {
     }
 }
 
-pub async fn send_response(http: &Arc<Http>, message: &Message, error: &str) {
-    match message.channel_id.send_message(&http, CreateMessage::new()
+pub async fn send_response(http: &Arc<Http>, message: &Message, error: &str) -> Result<Message, Error> {
+    message.channel_id.send_message(&http, CreateMessage::new()
         .reference_message(message)
-        .content(error)).await {
-        Ok(message) => if let Err(why) = message.react(http, ReactionType::Unicode("❌".to_string())).await {
-            println!("Error sending reaction: {why:?}")
-        }
-        Err(why) => println!("Error sending message: {why:?}")
-    }
+        .content(error)).await.map_err(Error::new)
 }
 
 pub async fn run_bot(
