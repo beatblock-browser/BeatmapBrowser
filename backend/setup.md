@@ -100,6 +100,11 @@ Install nginx:
 sudo apt-get install nginx
 `
 
+Configure it to remove old ssl protocols and set max_body_size to 20MB:
+`
+sudo nano /etc/nginx/nginx.conf
+`
+
 Put cert and private key in:
 `
 sudo nano /etc/ssl/certs/www.beatblockbrowser.crt
