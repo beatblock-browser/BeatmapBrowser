@@ -47,7 +47,7 @@ async fn get_map_request(
         return Err(APIError::Ratelimited());
     }
 
-    let request_data = collect_stream(request.into_data_stream(), 2000)
+    let request_data = collect_stream(request.into_data_stream(), 5000)
         .await
         .map_err(|err| APIError::QueryError(err))?;
     let string = String::from_utf8_lossy(request_data.deref());
