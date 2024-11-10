@@ -1,7 +1,18 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
 body {
     background-color: #f8f9fa; /* Light gray background */
     overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh; /* Ensure the body takes at least the full viewport height */
+    font-family: Arial, sans-serif; /* Choose your preferred font */
 }
+
 .login-container {
     margin-top: 100px; /* Top margin for vertical centering */
 }
@@ -73,4 +84,79 @@ body {
 .error-message.fade-out {
     opacity: 0;
     top: 0px; /* Optional: Move the message up as it fades out */
+}
+
+/* Fixed Footer Styling */
+.footer {
+    background-color: #f2f2f2; /* Light grey background */
+    padding: 20px 0;
+    width: 100%;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.content {
+    padding: 20px;
+    padding-bottom: 80px; /* Height of the footer + some extra space */
+}
+
+.footer .container {
+    max-width: 1200px; /* Adjust as needed */
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.footer-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* DMCA Info Styling */
+.footer .dmca-info {
+    margin-bottom: 10px;
+    text-align: center;
+    vertical-align: middle;
+    font-size: 14px;
+    color: #333;
+}
+
+.footer .dmca-info a {
+    color: #007BFF; /* Bootstrap primary color or choose your own */
+    text-decoration: none;
+}
+
+.footer .dmca-info a:hover {
+    text-decoration: underline;
+}
+
+/* Ko-fi Link Styling */
+.footer .ko-fi-link a img {
+    height: 36px; /* Adjust size as needed */
+    transition: transform 0.3s;
+}
+
+.footer .ko-fi-link a img:hover {
+    transform: scale(1.1); /* Slightly enlarge on hover */
+}
+
+/* Responsive Design */
+@media (min-width: 600px) {
+    .footer-content {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .footer .dmca-info {
+        margin-bottom: 0;
+        text-align: left;
+    }
+
+    .footer .ko-fi-link {
+        text-align: right;
+    }
 }
