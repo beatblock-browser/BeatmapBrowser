@@ -17,6 +17,7 @@ use std::time::Duration;
 use surrealdb::opt::PatchOp;
 use surrealdb::Surreal;
 use tokio::time::timeout;
+use crate::util::database::{BeatMap, User};
 
 // Real server
 pub const WHITELISTED_GUILDS: [u64; 1] = [756193219737288836];
@@ -51,7 +52,7 @@ impl EventHandler for Handler {
             return;
         }
 
-        self.handle_message(&context.http, message, HashSet::default())
+        self.handle_message(&context.http, message, &HashSet::default())
             .await;
     }
 
@@ -65,7 +66,7 @@ impl Handler {
         &self,
         _http: &Arc<Http>,
         message: Message,
-        upvotes: HashSet<UserId>,
+        upvotes: &HashSet<UserId>,
     ) -> bool {
         let mut found = false;
         for attachment in &message.attachments {
@@ -87,7 +88,7 @@ impl Handler {
                 Duration::from_millis(5000),
                 self.upload_map(file, message.author.id.into(), upvotes.clone()),
             )
-            .await
+                .await
             {
                 Ok(result) => match result {
                     Ok(_link) => {
@@ -131,15 +132,21 @@ impl Handler {
             &self.db,
             &self.ratelimit,
             UniqueIdentifier::Discord(user_id),
-            user.id.unwrap()
+            user.id.unwrap(),
         )
-        .await?;
+            .await?;
         if map.upvotes == 0 {
             for user in &upvotes {
                 let user = get_user(false, user.to_string(), &self.db).await?;
-                self.db.update(user.id.unwrap()).patch(PatchOp::add("upvoted", map.id.clone().unwrap())).await?;
+                let user_id = user.id.as_ref().unwrap();
+                let _: Option<User> = self.db.update(("users".to_string(), user_id.id.to_string()))
+                    .patch(PatchOp::add("upvoted", map.id.clone().unwrap())).await
+                    .map_err(APIError::database_error)?;
             }
-            self.db.update(map.id.unwrap()).patch(PatchOp::replace("upvotes", upvotes.len())).await?;
+            let map_id = map.id.as_ref().unwrap();
+            let _: Option<BeatMap> = self.db.update(("beatmaps".to_string(), map_id.id.to_string()))
+                .patch(PatchOp::replace("upvotes", upvotes.len())).await
+                .map_err(APIError::database_error)?;
         }
         serde_urlencoded::to_string(&SearchArguments {
             query: map.song.clone(),
