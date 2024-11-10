@@ -96,7 +96,7 @@ async function displaySearchResults() {
 }
 
 async function updateSearchPage(idToken, finishedSearch) {
-    {
+    try {
         let upvoted = await fetch(`/api/account_data`, {
             method: 'POST',
             body: JSON.stringify({
@@ -125,6 +125,9 @@ async function updateSearchPage(idToken, finishedSearch) {
         }
 
         document.querySelectorAll('.slow-loader').forEach((element) => element.disabled = false);
+    } catch (e) {
+        showError('An error occurred while fetching user data. Please report this!');
+        console.log("Error fetching userd data: ", e);
     }
 }
 

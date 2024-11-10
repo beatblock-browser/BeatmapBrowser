@@ -20,12 +20,12 @@ use tokio::time::timeout;
 use crate::util::database::{BeatMap, User};
 
 // Real server
-pub const WHITELISTED_GUILDS: [u64; 1] = [756193219737288836];
-pub const WHITELISTED_CHANNELS: [u64; 1] = [1244495595838640179];
+//pub const WHITELISTED_GUILDS: [u64; 1] = [756193219737288836];
+//pub const WHITELISTED_CHANNELS: [u64; 1] = [1244495595838640179];
 
 // Testing server
-//pub const WHITELISTED_GUILDS: [u64; 0] = [];
-//pub const WHITELISTED_CHANNELS: [u64; 1] = [1298415906388574279];
+pub const WHITELISTED_GUILDS: [u64; 0] = [];
+pub const WHITELISTED_CHANNELS: [u64; 1] = [1298415906388574279];
 
 #[derive(Clone)]
 struct Handler {
@@ -64,7 +64,7 @@ impl EventHandler for Handler {
 impl Handler {
     pub async fn handle_message(
         &self,
-        _http: &Arc<Http>,
+        http: &Arc<Http>,
         message: Message,
         upvotes: &HashSet<UserId>,
     ) -> bool {
@@ -79,7 +79,7 @@ impl Handler {
                     "Skipped massive file {}: {}",
                     attachment.filename, attachment.url
                 );
-                //send_response(&http, &message, &"Failed to upload file! Size over 20MB limit!").await;
+                send_response(&http, &message, &"Failed to upload file! Size over 20MB limit!").await;
                 continue;
             }
 
@@ -91,10 +91,10 @@ impl Handler {
                 .await
             {
                 Ok(result) => match result {
-                    Ok(_link) => {
+                    Ok(link) => {
                         found = true;
-                        /*send_response(&http, &message, &format!("Map uploaded! Try it at https://beatblockbrowser.me/search.html?{link}")).await;
-                        if let Err(why) = message.react(&http, ReactionType::Unicode("🔼".to_string())).await {
+                        send_response(&http, &message, &format!("Map uploaded! Try it at https://beatblockbrowser.me/search.html?{link}")).await;
+                        /*if let Err(why) = message.react(&http, ReactionType::Unicode("🔼".to_string())).await {
                             println!("Error sending message: {why:?}");
                         }
                         if let Err(why) = message.react(&http, ReactionType::Unicode("🔽".to_string())).await {
@@ -102,7 +102,7 @@ impl Handler {
                         }*/
                     }
                     Err(err) => {
-                        //send_response(&context.http, &message, &format!("Failed to upload file! Error: {err}")).await;
+                        send_response(&http, &message, &format!("Failed to upload file! Error: {err}")).await;
                         println!(
                             "Upload error for {} ({}): {err:?}",
                             message.link(),
@@ -111,7 +111,7 @@ impl Handler {
                     }
                 },
                 Err(_) => {
-                    //send_response(&context.http, &message, "Failed to read the zip file! Please report this for it to sync properly").await
+                    send_response(&http, &message, "Failed to read the zip file! Please report this for it to sync properly").await;
                     println!("Timeout error for {}", message.link());
                 }
             }
