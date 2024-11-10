@@ -45,16 +45,13 @@ impl EventHandler for Handler {
             .unwrap()
             .parent_id
         {
-            println!("Found parent {} for {}", parent, message.channel_id);
-            if !WHITELISTED_CHANNELS.contains(&parent.into()) {
+            if !WHITELISTED_CHANNELS.contains(&message.channel_id.into()) && !WHITELISTED_CHANNELS.contains(&parent.into()) {
                 return;
             }
         } else if !WHITELISTED_CHANNELS.contains(&message.channel_id.into()) {
-            println!("{} not in {:?}", message.channel_id.get(), WHITELISTED_CHANNELS);
             return;
         }
 
-        println!("Got message!");
         self.handle_message(&context.http, message, &HashSet::default())
             .await;
     }
