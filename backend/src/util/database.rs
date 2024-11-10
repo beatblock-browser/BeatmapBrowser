@@ -1,10 +1,10 @@
+use crate::parsing::LevelVariant;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::opt::auth::Root;
 use surrealdb::sql::Thing;
 use surrealdb::Surreal;
-use crate::parsing::LevelVariant;
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BeatMap {
@@ -20,7 +20,7 @@ pub struct BeatMap {
     pub upvotes: u64,
     pub upload_date: DateTime<Utc>,
     pub update_date: DateTime<Utc>,
-    pub id: Option<Thing>
+    pub id: Option<Thing>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -30,7 +30,7 @@ pub struct User {
     pub upvoted: Vec<Thing>,
     pub id: Option<Thing>,
     pub discord_id: Option<u64>,
-    pub google_id: Option<String>
+    pub google_id: Option<String>,
 }
 
 pub async fn connect() -> surrealdb::Result<Surreal<Client>> {
@@ -42,14 +42,22 @@ pub async fn connect() -> surrealdb::Result<Surreal<Client>> {
         username: "root",
         password: "root",
     })
-        .await?;
+    .await?;
 
     // Select a specific namespace / database
     db.use_ns("beatblock").use_db("beatblock").await?;
 
-    db.query("DEFINE ANALYZER ascii TOKENIZERS blank FILTERS ascii, lowercase;").await.unwrap();
-    db.query("DEFINE INDEX song_name ON TABLE beatmaps FIELDS song SEARCH ANALYZER ascii;").await.unwrap();
-    db.query("DEFINE INDEX artist_name ON TABLE beatmaps FIELDS artist SEARCH ANALYZER ascii;").await.unwrap();
-    db.query("DEFINE INDEX charter_name ON TABLE beatmaps FIELDS charter SEARCH ANALYZER ascii;").await.unwrap();
+    db.query("DEFINE ANALYZER ascii TOKENIZERS blank FILTERS ascii, lowercase;")
+        .await
+        .unwrap();
+    db.query("DEFINE INDEX song_name ON TABLE beatmaps FIELDS song SEARCH ANALYZER ascii;")
+        .await
+        .unwrap();
+    db.query("DEFINE INDEX artist_name ON TABLE beatmaps FIELDS artist SEARCH ANALYZER ascii;")
+        .await
+        .unwrap();
+    db.query("DEFINE INDEX charter_name ON TABLE beatmaps FIELDS charter SEARCH ANALYZER ascii;")
+        .await
+        .unwrap();
     Ok(db)
 }
