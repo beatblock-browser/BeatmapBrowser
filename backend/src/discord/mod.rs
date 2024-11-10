@@ -6,7 +6,7 @@ use crate::api::APIError;
 use crate::discord::backlogger::update_backlog;
 use crate::util::ratelimiter::{Ratelimiter, UniqueIdentifier};
 use crate::util::{get_user, LockResultExt};
-use serenity::all::{Http, Ready, UserId};
+use serenity::all::{CreateMessage, Http, ReactionType, Ready, UserId};
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
@@ -84,7 +84,6 @@ impl Handler {
             }
 
             let file = attachment.download().await;
-            println!("Got file");
             match timeout(
                 Duration::from_millis(5000),
                 self.upload_map(file, message.author.id.into(), upvotes.clone()),
@@ -93,9 +92,11 @@ impl Handler {
             {
                 Ok(result) => match result {
                     Ok(link) => {
-                        println!("Uploaded");
                         found = true;
                         send_response(&http, &message, &format!("Map uploaded! Try it at https://beatblockbrowser.me/search.html?{link}")).await;
+                        if let Err(why) = message.react(&http, ReactionType::Unicode("✔️".to_string())).await {
+                            println!("Error sending message: {why:?}");
+                        }
                         /*if let Err(why) = message.react(&http, ReactionType::Unicode("🔼".to_string())).await {
                             println!("Error sending message: {why:?}");
                         }
@@ -104,7 +105,6 @@ impl Handler {
                         }*/
                     }
                     Err(err) => {
-                        println!("Failed");
                         send_response(&http, &message, &format!("Failed to upload file! Error: {err}")).await;
                         println!(
                             "Upload error for {} ({}): {err:?}",
@@ -159,15 +159,15 @@ impl Handler {
     }
 }
 
-pub async fn send_response(_http: &Arc<Http>, _message: &Message, _error: &str) {
-    /*match message.channel_id.send_message(&http, CreateMessage::new()
+pub async fn send_response(http: &Arc<Http>, message: &Message, error: &str) {
+    match message.channel_id.send_message(&http, CreateMessage::new()
         .reference_message(message)
         .content(error)).await {
         Ok(message) => if let Err(why) = message.react(http, ReactionType::Unicode("❌".to_string())).await {
-            println!("Error sending message: {why:?}")
+            println!("Error sending reaction: {why:?}")
         }
         Err(why) => println!("Error sending message: {why:?}")
-    }*/
+    }
 }
 
 pub async fn run_bot(
