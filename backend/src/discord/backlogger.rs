@@ -71,7 +71,7 @@ async fn update_channel(
         .map(|msg| msg.author.id)
         .collect::<HashSet<_>>();
     if !stream::iter(output)
-        .any(|message| handler.handle_message(&http, message, upvotes))
+        .any(|message| handler.handle_message(&http, message, &upvotes))
         .await
     {
         //println!("Failed for thread {}", channel);

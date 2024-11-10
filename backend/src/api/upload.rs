@@ -204,7 +204,7 @@ pub fn save_image(data: &mut FileData, path: &PathBuf, uuid: &Uuid) -> Result<()
                 Ok(image) => {
                     image
                         .save_with_format(path.join(format!("{uuid}.png")), ImageFormat::Png)
-                        .unwrap();
+                        .map_err(|err| APIError::ZipError(Error::from(err)))?;
                 }
                 Err(err) => {
                     return Err(APIError::ZipError(Error::from(err)));
