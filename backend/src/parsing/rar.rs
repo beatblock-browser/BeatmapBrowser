@@ -1,3 +1,4 @@
+use crate::api::upload::MAX_SIZE;
 use crate::parsing::ArchiveParser;
 use anyhow::{Context, Error};
 use std::env::temp_dir;
@@ -7,7 +8,6 @@ use std::{fs, mem};
 use unrar::{Archive, CursorBeforeFile, CursorBeforeHeader, OpenArchive, Process};
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
-use crate::api::upload::MAX_SIZE;
 
 pub struct RarArchiveReader<'a> {
     temp_file: PathBuf,
@@ -20,10 +20,7 @@ impl<'a> RarArchiveReader<'a> {
         let mut temp = Vec::new();
         mem::swap(file, &mut temp);
         fs::write(&temp_file, temp)?;
-        Ok(Self {
-            temp_file,
-            file,
-        })
+        Ok(Self { temp_file, file })
     }
 }
 
@@ -31,11 +28,15 @@ impl ArchiveParser for RarArchiveReader<'_> {
     fn fetch_file(&self, target_file_name: &str) -> Result<Vec<u8>, Error> {
         let file_name = target_file_name.to_ascii_lowercase();
 
-        Ok(Iter::new(|name| !name.ends_with(&file_name), &self.temp_file)?
-            .collect::<Result<Vec<_>, Error>>()?
-            .into_iter().filter_map(|value| value)
-            .min_by_key(|(name, _)| name.matches('/').count())
-            .context(format!("Failed to find the file {target_file_name}"))?.1)
+        Ok(
+            Iter::new(|name| !name.ends_with(&file_name), &self.temp_file)?
+                .collect::<Result<Vec<_>, Error>>()?
+                .into_iter()
+                .filter_map(|value| value)
+                .min_by_key(|(name, _)| name.matches('/').count())
+                .context(format!("Failed to find the file {target_file_name}"))?
+                .1,
+        )
     }
 
     fn overwrite_file(&mut self) -> Result<(), Error> {
@@ -45,8 +46,9 @@ impl ArchiveParser for RarArchiveReader<'_> {
         while let Some(header) = archive.read_header()? {
             let file_name = match header.entry().filename.to_str() {
                 Some(name) => name,
-                None => return Err(Error::msg("Invalid file name in rar"))
-            }.to_string();
+                None => return Err(Error::msg("Invalid file name in rar")),
+            }
+            .to_string();
             let (file_data, next) = header.read()?;
             if !file_data.is_empty() {
                 zip.start_file(&file_name, SimpleFileOptions::default())?;
@@ -57,7 +59,7 @@ impl ArchiveParser for RarArchiveReader<'_> {
 
         *self.file = zip.finish()?.into_inner();
         if self.file.len() > MAX_SIZE as usize {
-            return Err(Error::msg("File size is too large!"))
+            return Err(Error::msg("File size is too large!"));
         }
         Ok(())
     }
@@ -82,7 +84,10 @@ impl<F: Fn(&String) -> bool> Iter<F> {
         })
     }
 
-    fn check_entry(&mut self, header: OpenArchive<Process, CursorBeforeFile>) -> Result<Option<(String, Vec<u8>)>, Error> {
+    fn check_entry(
+        &mut self,
+        header: OpenArchive<Process, CursorBeforeFile>,
+    ) -> Result<Option<(String, Vec<u8>)>, Error> {
         let name = header.entry().filename.clone();
         let name = name.to_str().unwrap_or("invalid_file_name");
         if (self.skip)(&name.to_ascii_lowercase()) {
@@ -102,7 +107,7 @@ impl<F: Fn(&String) -> bool> Iterator for Iter<F> {
     fn next(&mut self) -> Option<Self::Item> {
         let Some(header) = (match self.archive.take().unwrap().read_header() {
             Ok(header) => header,
-            Err(error) => return Some(Err(error.into()))
+            Err(error) => return Some(Err(error.into())),
         }) else {
             return None;
         };

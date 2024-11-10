@@ -1,20 +1,20 @@
+use crate::api::upload::MAX_SIZE;
+use crate::api::APIError;
 use crate::parsing::rar::RarArchiveReader;
 use crate::parsing::zip::ZipArchiveReader;
+use ::zip::write::SimpleFileOptions;
+use ::zip::{ZipArchive, ZipWriter};
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use std::io::{Cursor, Read, Write};
 use std::path::{Component, PathBuf};
-use ::zip::{ZipArchive, ZipWriter};
-use ::zip::write::SimpleFileOptions;
-use crate::api::APIError;
-use crate::api::upload::MAX_SIZE;
 
-pub mod zip;
 pub mod rar;
+pub mod zip;
 
 pub struct FileData {
     pub level_data: LevelMetadata,
-    pub image: Option<Vec<u8>>
+    pub image: Option<Vec<u8>>,
 }
 
 #[derive(Deserialize)]
@@ -37,7 +37,7 @@ pub struct LevelMetadata {
     #[serde(default)]
     pub bg_data: Option<BackgroundData>,
     #[serde(default)]
-    pub variants: Vec<LevelVariant>
+    pub variants: Vec<LevelVariant>,
 }
 
 #[derive(Deserialize)]
@@ -48,14 +48,14 @@ pub struct BackgroundData {
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct LevelVariant {
     display: String,
-    difficulty: f64
+    difficulty: f64,
 }
 
 impl Into<LevelVariant> for f64 {
     fn into(self) -> LevelVariant {
         LevelVariant {
             display: get_difficulty(self),
-            difficulty: self
+            difficulty: self,
         }
     }
 }
@@ -66,12 +66,16 @@ fn get_difficulty(difficulty: f64) -> String {
         ..=5.0 => "Easy",
         ..=10.0 => "Hard",
         ..=15.0 => "Challenge",
-        _ => "Apocrypha"
-    }.to_string()
+        _ => "Apocrypha",
+    }
+    .to_string()
 }
 
 pub fn check_path(path: &PathBuf) -> Result<(), Error> {
-    if path.components().any(|component| component == Component::ParentDir) {
+    if path
+        .components()
+        .any(|component| component == Component::ParentDir)
+    {
         Err(Error::msg("File path contains directory traversal"))
     } else {
         Ok(())
@@ -87,15 +91,19 @@ pub fn get_parser<'a>(beatmap: &'a mut Vec<u8>) -> Result<Box<dyn ArchiveParser 
         if beatmap.len() > 3 {
             println!("Bad archive {:?}", &beatmap[0..3]);
         }
-        return Err(APIError::ArchiveTypeError())
+        return Err(APIError::ArchiveTypeError());
     })
 }
 
 pub fn parse_archive(archive_parser: &mut dyn ArchiveParser) -> Result<FileData, Error> {
-    let data = archive_parser.fetch_file("level.json")
+    let data = archive_parser
+        .fetch_file("level.json")
         .and_then(|data| serde_json::from_slice::<LevelData>(&data).map_err(Error::new))
-        .or_else(|_| archive_parser.fetch_file("manifest.json")
-                .and_then(|data| serde_json::from_slice(&data).map_err(Error::new)))?;
+        .or_else(|_| {
+            archive_parser
+                .fetch_file("manifest.json")
+                .and_then(|data| serde_json::from_slice(&data).map_err(Error::new))
+        })?;
 
     let metadata = data.metadata;
     let mut image = None;
@@ -109,7 +117,7 @@ pub fn parse_archive(archive_parser: &mut dyn ArchiveParser) -> Result<FileData,
 
     Ok(FileData {
         level_data: metadata,
-        image
+        image,
     })
 }
 
@@ -119,10 +127,13 @@ pub fn check_archive(file: &mut Vec<u8>) -> Result<(), Error> {
     let mut cursor: Cursor<&Vec<u8>> = Cursor::new(file);
     let mut archive = ZipArchive::new(&mut cursor)?;
     let mut size = 0;
-    let files: Vec<String> = archive.file_names().map(|string| string.to_string()).collect();
+    let files: Vec<String> = archive
+        .file_names()
+        .map(|string| string.to_string())
+        .collect();
     for file_name in files {
         if !is_legal_name(&file_name)? {
-            continue
+            continue;
         }
         let mut file = archive.by_name(&file_name)?;
         let file_size = file.size();
@@ -141,12 +152,15 @@ pub fn check_archive(file: &mut Vec<u8>) -> Result<(), Error> {
 }
 
 // Allows misspelling, just here to block exes and other malicious files
-pub const EXTENSIONS: [&'static str; 12] = ["png", "jpg", "jpeg", "webp", "mp3", "bmp", "ogg", "oog", "wav", "json", "md", "txt"];
+pub const EXTENSIONS: [&'static str; 12] = [
+    "png", "jpg", "jpeg", "webp", "mp3", "bmp", "ogg", "oog", "wav", "json", "md", "txt",
+];
 
 fn is_legal_name(name: &str) -> Result<bool, Error> {
     check_path(&PathBuf::from(name))?;
-    Ok(name.ends_with('/') || name.ends_with('\\') ||
-        EXTENSIONS.contains(&name.split('.').last().unwrap()))
+    Ok(name.ends_with('/')
+        || name.ends_with('\\')
+        || EXTENSIONS.contains(&name.split('.').last().unwrap()))
 }
 
 pub trait ArchiveParser {

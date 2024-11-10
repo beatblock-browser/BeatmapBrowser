@@ -6,21 +6,22 @@ use std::ops::Add;
 use std::time::SystemTime;
 
 pub struct Ratelimiter {
-    limits: HashMap<SiteAction, Limits>
+    limits: HashMap<SiteAction, Limits>,
 }
 
 impl Ratelimiter {
     pub fn new() -> Self {
         let mut limits = HashMap::new();
         for action in ACTIONS {
-            limits.insert(action, Limits {
-                blocked_times: vec![],
-                searchable_users: Default::default(),
-            });
+            limits.insert(
+                action,
+                Limits {
+                    blocked_times: vec![],
+                    searchable_users: Default::default(),
+                },
+            );
         }
-        Ratelimiter {
-            limits
-        }
+        Ratelimiter { limits }
     }
 
     pub fn check_limited(&mut self, action: SiteAction, ip: &UniqueIdentifier) -> bool {
@@ -33,24 +34,27 @@ impl Ratelimiter {
     pub fn clear(&mut self) {
         self.limits.clear();
         for action in ACTIONS {
-            self.limits.insert(action, Limits {
-                blocked_times: vec![],
-                searchable_users: Default::default(),
-            });
+            self.limits.insert(
+                action,
+                Limits {
+                    blocked_times: vec![],
+                    searchable_users: Default::default(),
+                },
+            );
         }
     }
 }
 
 pub struct Limits {
     blocked_times: Vec<DateTime<Utc>>,
-    searchable_users: LinkedHashSet<UniqueIdentifier>
+    searchable_users: LinkedHashSet<UniqueIdentifier>,
 }
 
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Debug)]
 pub enum UniqueIdentifier {
     Ipv4(Ipv4Addr),
     Ipv6(Ipv6Addr),
-    Discord(u64)
+    Discord(u64),
 }
 
 impl Limits {
@@ -60,7 +64,7 @@ impl Limits {
                 self.blocked_times.pop();
                 self.searchable_users.pop_front();
             } else {
-                break
+                break;
             }
         }
 
@@ -68,12 +72,21 @@ impl Limits {
     }
 
     pub fn add_limit(&mut self, ip: &UniqueIdentifier, time: i64) {
-        self.blocked_times.insert(self.blocked_times.len(), DateTime::from(SystemTime::now()).add(TimeDelta::new(time,0).unwrap()));
+        self.blocked_times.insert(
+            self.blocked_times.len(),
+            DateTime::from(SystemTime::now()).add(TimeDelta::new(time, 0).unwrap()),
+        );
         self.searchable_users.insert(ip.clone());
     }
 }
 
-pub const ACTIONS: [SiteAction; 5] = [SiteAction::Search, SiteAction::Upload, SiteAction::Update, SiteAction::UpvoteList, SiteAction::Download];
+pub const ACTIONS: [SiteAction; 5] = [
+    SiteAction::Search,
+    SiteAction::Upload,
+    SiteAction::Update,
+    SiteAction::UpvoteList,
+    SiteAction::Download,
+];
 
 #[derive(Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum SiteAction {
@@ -81,7 +94,7 @@ pub enum SiteAction {
     Download,
     Update,
     Upload,
-    UpvoteList
+    UpvoteList,
 }
 
 impl SiteAction {
@@ -90,7 +103,7 @@ impl SiteAction {
         match self {
             SiteAction::Search | SiteAction::Download | SiteAction::UpvoteList => 1,
             SiteAction::Update => 60,
-            SiteAction::Upload => 60*60*24,
+            SiteAction::Upload => 60 * 60 * 24,
         }
     }
 }

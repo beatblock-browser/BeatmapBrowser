@@ -1,8 +1,10 @@
-mod parsing;
-mod discord;
 mod api;
+mod discord;
+mod parsing;
 mod util;
 
+use crate::api::account_data::account_data;
+use crate::api::downloaded::{download, remove};
 use crate::api::search::search_database;
 use crate::api::upload::upload;
 use crate::api::upvote::{unvote, upvote};
@@ -26,8 +28,6 @@ use std::sync::{Arc, Mutex};
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
 use tokio::net::TcpListener;
-use crate::api::account_data::account_data;
-use crate::api::downloaded::{download, remove};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -49,16 +49,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     loop {
         match handle_connection(&listener, data.clone()).await {
             Ok(()) => {}
-            Err(err) => println!("Error serving connection: {err:?}")
+            Err(err) => println!("Error serving connection: {err:?}"),
         }
     }
 }
 
-
-async fn handle_request(request: Request<hyper::body::Incoming>, ip: SocketAddr, data: SiteData) -> Result<Response<EitherBody>, Error> {
+async fn handle_request(
+    request: Request<hyper::body::Incoming>,
+    ip: SocketAddr,
+    data: SiteData,
+) -> Result<Response<EitherBody>, Error> {
     let identifier = match ip {
         SocketAddr::V4(ip) => UniqueIdentifier::Ipv4(ip.ip().clone()),
-        SocketAddr::V6(ip) => UniqueIdentifier::Ipv6(ip.ip().clone())
+        SocketAddr::V6(ip) => UniqueIdentifier::Ipv6(ip.ip().clone()),
     };
     let request_path = request.uri().path().to_string();
     let method = match (request.method(), &*request_path) {
@@ -69,11 +72,20 @@ async fn handle_request(request: Request<hyper::body::Incoming>, ip: SocketAddr,
         (&Method::POST, "/api/remove") => remove(request, identifier, &data).await,
         (&Method::POST, "/api/account_data") => account_data(request, identifier, &data).await,
         (&Method::POST, "/api/upload") => upload(request, identifier, &data).await,
-        _ => return Ok(data.site.serve(request).await.context("Failed to serve static file")?.map(|body| body.into()))
+        _ => {
+            return Ok(data
+                .site
+                .serve(request)
+                .await
+                .context("Failed to serve static file")?
+                .map(|body| body.into()))
+        }
     };
 
     Ok(match method {
-        Ok(query) => Builder::new().status(StatusCode::OK).body(Full::new(Bytes::from(format!("{query}"))).into()),
+        Ok(query) => Builder::new()
+            .status(StatusCode::OK)
+            .body(Full::new(Bytes::from(format!("{query}"))).into()),
         Err(error) => {
             println!("Error with {}: {:?}", request_path, error);
             build_request((error.get_code(), error.to_string()))
@@ -106,7 +118,8 @@ async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(),
 }
 
 fn build_request(data: (StatusCode, String)) -> Result<Response<EitherBody>, hyper::http::Error> {
-    Builder::new().status(data.0)
+    Builder::new()
+        .status(data.0)
         .body(Full::new(Bytes::from(data.1)).into())
 }
 

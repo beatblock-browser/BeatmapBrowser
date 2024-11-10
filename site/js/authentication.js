@@ -69,14 +69,14 @@ const signalPromise = new Promise((resolve) => {
 onAuthStateChanged(auth, async (user) => {
     const loginNavLink = document.getElementById('loginNavLink');
     const uploadNavLink = document.getElementById('uploadNavLink');
-    const accountNavLink = document.getElementById('accountNavLink');
+    //const accountNavLink = document.getElementById('accountNavLink');
     if (user) {
         console.log('User is signed in:', user);
         // Hide "Log In" link
         loginNavLink.classList.add('d-none'); // Using Bootstrap's d-none class
         // Show "Upload" and "Account" links
         uploadNavLink.classList.remove('d-none');
-        accountNavLink.classList.remove('d-none');
+        //accountNavLink.classList.remove('d-none');
         await resolveSignal();
     } else {
         console.log('No user is signed in.');
@@ -84,7 +84,7 @@ onAuthStateChanged(auth, async (user) => {
         loginNavLink.classList.remove('d-none');
         // Hide "Upload" and "Account" links
         uploadNavLink.classList.add('d-none');
-        accountNavLink.classList.add('d-none');
+        //accountNavLink.classList.add('d-none');
         await resolveSignal();
     }
 });
@@ -93,10 +93,10 @@ export async function runLoggedIn(ifLoggedIn, otherwise = () => showError('This 
     await signalPromise;
     const user = auth.currentUser;
     if (user) {
-        user.getIdToken(true).then(ifLoggedIn).catch(function (error) {
+        user.getIdToken(true).catch(function (error) {
             console.error('Error fetching ID token:', error);
             showError('Error authenticating, please sign in again or ask for help in the discord.');
-        });
+        }).then(ifLoggedIn);
     } else {
         otherwise()
     }
