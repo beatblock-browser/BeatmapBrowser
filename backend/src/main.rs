@@ -28,6 +28,7 @@ use std::sync::{Arc, Mutex};
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
 use tokio::net::TcpListener;
+use crate::api::APIError;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -75,12 +76,18 @@ async fn handle_request(
         (&Method::POST, "/api/account_data") => account_data(request, identifier, &data).await,
         (&Method::POST, "/api/upload") => upload(request, identifier, &data).await,
         _ => {
-            return Ok(data
+            return match data
                 .site
                 .serve(request)
-                .await
-                .context("Failed to serve static file")?
-                .map(|body| body.into()))
+                .await {
+                Ok(file) => Ok(file.into()),
+                Err(error) => {
+                    println!("Error serving static file: {error}");
+                    Builder::new().status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Full::new(Bytes::from("Site is likely overwhelmed, pleaase try again later")).into())
+                        .into()
+                }
+            };
         }
     };
 
@@ -89,7 +96,9 @@ async fn handle_request(
             .status(StatusCode::OK)
             .body(Full::new(Bytes::from(format!("{query}"))).into()),
         Err(error) => {
-            println!("Error with {}: {:?}", request_path, error);
+            if let APIError::Ratelimited() = error {} else {
+                println!("Error with {}: {:?}", request_path, error);
+            }
             build_request((error.get_code(), error.to_string()))
         }
     }?)
