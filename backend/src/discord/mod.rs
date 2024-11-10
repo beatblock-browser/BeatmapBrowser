@@ -52,6 +52,7 @@ impl EventHandler for Handler {
             return;
         }
 
+        println!("Got message!");
         self.handle_message(&context.http, message, &HashSet::default())
             .await;
     }
