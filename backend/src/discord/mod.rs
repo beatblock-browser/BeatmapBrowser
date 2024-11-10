@@ -36,7 +36,6 @@ struct Handler {
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, context: Context, message: Message) {
-        println!("Message in {}!", message.channel_id);
         if let Some(parent) = message
             .channel_id
             .to_channel(&context.http)
@@ -50,6 +49,7 @@ impl EventHandler for Handler {
                 return;
             }
         } else if !WHITELISTED_CHANNELS.contains(&message.channel_id.into()) {
+            println!("{} not in {:?}", message.channel_id.get(), WHITELISTED_CHANNELS);
             return;
         }
 
