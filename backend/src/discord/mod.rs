@@ -46,14 +46,12 @@ impl EventHandler for Handler {
             .parent_id
         {
             if !WHITELISTED_CHANNELS.contains(&message.channel_id.into()) && !WHITELISTED_CHANNELS.contains(&parent.into()) {
-                println!("{} and {} not in {:?}", message.channel_id, parent, WHITELISTED_CHANNELS);
                 return;
             }
         } else if !WHITELISTED_CHANNELS.contains(&message.channel_id.into()) {
             return;
         }
 
-        println!("Got message!");
         self.handle_message(&context.http, message, &HashSet::default())
             .await;
     }
@@ -86,6 +84,7 @@ impl Handler {
             }
 
             let file = attachment.download().await;
+            println!("Got file");
             match timeout(
                 Duration::from_millis(5000),
                 self.upload_map(file, message.author.id.into(), upvotes.clone()),
@@ -94,6 +93,7 @@ impl Handler {
             {
                 Ok(result) => match result {
                     Ok(link) => {
+                        println!("Uploaded");
                         found = true;
                         send_response(&http, &message, &format!("Map uploaded! Try it at https://beatblockbrowser.me/search.html?{link}")).await;
                         /*if let Err(why) = message.react(&http, ReactionType::Unicode("🔼".to_string())).await {
@@ -104,6 +104,7 @@ impl Handler {
                         }*/
                     }
                     Err(err) => {
+                        println!("Failed");
                         send_response(&http, &message, &format!("Failed to upload file! Error: {err}")).await;
                         println!(
                             "Upload error for {} ({}): {err:?}",
@@ -113,6 +114,7 @@ impl Handler {
                     }
                 },
                 Err(_) => {
+                    println!("Timeout");
                     send_response(&http, &message, "Failed to read the zip file! Please report this for it to sync properly").await;
                     println!("Timeout error for {}", message.link());
                 }
