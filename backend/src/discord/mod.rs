@@ -60,7 +60,9 @@ impl EventHandler for Handler {
     }
 
     async fn ready(&self, ctx: Context, _data_about_bot: Ready) {
-        update_backlog(self, &ctx).await.unwrap();
+        if let Err(error) = update_backlog(self, &ctx).await {
+            println!("Error updating backlog: {error:?}");
+        }
     }
 }
 
