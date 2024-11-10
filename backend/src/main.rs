@@ -80,12 +80,12 @@ async fn handle_request(
                 .site
                 .serve(request)
                 .await {
-                Ok(file) => Ok(file.into()),
+                Ok(file) => Ok(file.map(|body| body.into())),
                 Err(error) => {
                     println!("Error serving static file: {error}");
                     Builder::new().status(StatusCode::INTERNAL_SERVER_ERROR)
                         .body(Full::new(Bytes::from("Site is likely overwhelmed, pleaase try again later")).into())
-                        .into()
+                        .map_err(Error::new)
                 }
             };
         }
