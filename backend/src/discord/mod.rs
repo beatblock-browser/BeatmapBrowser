@@ -36,6 +36,7 @@ struct Handler {
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, context: Context, message: Message) {
+        println!("Message in {}!", message.channel_id);
         if let Some(parent) = message
             .channel_id
             .to_channel(&context.http)
