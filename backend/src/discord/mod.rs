@@ -45,6 +45,7 @@ impl EventHandler for Handler {
             .unwrap()
             .parent_id
         {
+            println!("Found parent {} for {}", parent, message.channel_id);
             if !WHITELISTED_CHANNELS.contains(&parent.into()) {
                 return;
             }
