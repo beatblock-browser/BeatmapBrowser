@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use crate::api::search::SearchArguments;
 use crate::api::APIError;
-use crate::parsing::{check_archive, get_parser, parse_archive};
+use crate::parsing::{check_archive, get_parser, parse_archive, BackgroundData};
 use crate::util::database::{BeatMap, User};
 use crate::util::ratelimiter::{Ratelimiter, SiteAction, UniqueIdentifier};
 use crate::util::{get_beatmap_id, get_user, LockResultExt};
@@ -12,7 +13,7 @@ use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::header::CONTENT_TYPE;
 use hyper::Request;
-use image::{ImageFormat, ImageReader};
+use image::{ImageFormat, ImageReader, RgbImage};
 use multer::{Constraints, Field, Multipart, SizeLimit};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -133,7 +134,7 @@ pub async fn upload_beatmap(
     {
         id = map.id.as_ref().unwrap().id.to_string();
         // Fix the weird surrealdb symbols
-        id = id[3..id.len()-3].to_string();
+        id = id[3..id.len() - 3].to_string();
 
         // Update the old map instead
         map.upload_date = DateTime::from(SystemTime::now());
@@ -187,12 +188,12 @@ pub async fn upload_beatmap(
         map
     });
 
-    save_image(&mut file_data.image, &path, &id)?;
+    save_image(&mut file_data.image, &file_data.level_data.bg_data, &path, &id)?;
     fs::write(path.join(format!("{}.zip", id)), beatmap)?;
     result
 }
 
-pub fn save_image(data: &mut Option<Vec<u8>>, path: &PathBuf, uuid: &str) -> Result<(), APIError> {
+pub fn save_image(data: &mut Option<Vec<u8>>, bg_data: &Option<BackgroundData>, path: &PathBuf, uuid: &str) -> Result<(), APIError> {
     if let Some(ref image) = data {
         if image.is_empty() {
             *data = None;
@@ -207,7 +208,7 @@ pub fn save_image(data: &mut Option<Vec<u8>>, path: &PathBuf, uuid: &str) -> Res
             }
             match reader.decode() {
                 Ok(image) => {
-                    image
+                    replace_image_channels(image.to_rgb8(), bg_data)
                         .save_with_format(path.join(format!("{uuid}.png")), ImageFormat::Png)
                         .map_err(|err| APIError::ZipError(Error::from(err)))?;
                 }
@@ -218,6 +219,37 @@ pub fn save_image(data: &mut Option<Vec<u8>>, path: &PathBuf, uuid: &str) -> Res
         }
     }
     Ok(())
+}
+
+fn replace_image_channels(mut img_buffer: RgbImage, bg_data: &Option<BackgroundData>) -> RgbImage {
+    let Some(bg_data) = bg_data else {
+        return img_buffer;
+    };
+    let mut channels: HashMap<[u8; 3], [u8; 3]> = HashMap::new();
+    if let Some(channel) = &bg_data.red_channel {
+        channels.insert([255, 0, 0], channel.into());
+    }
+    if let Some(channel) = &bg_data.green_channel {
+        channels.insert([0, 255, 0], channel.into());
+    }
+    if let Some(channel) = &bg_data.blue_channel {
+        channels.insert([0, 0, 255], channel.into());
+    }
+    if let Some(channel) = &bg_data.magenta_channel {
+        channels.insert([255, 0, 255], channel.into());
+    }
+    if let Some(channel) = &bg_data.cyan_channel {
+        channels.insert([0, 255, 255], channel.into());
+    }
+    if let Some(channel) = &bg_data.yellow_channel {
+        channels.insert([255, 255, 0], channel.into());
+    }
+    for pixel in img_buffer.pixels_mut() {
+        if let Some(replacement) = channels.get(&pixel.0) {
+            pixel.0 = *replacement;
+        }
+    }
+    img_buffer
 }
 
 pub async fn get_form(request: Request<Incoming>) -> Result<UploadForm, APIError> {

@@ -71,10 +71,10 @@ impl Limits {
         self.searchable_users.contains(ip)
     }
 
-    pub fn add_limit(&mut self, ip: &UniqueIdentifier, time: i64) {
+    pub fn add_limit(&mut self, ip: &UniqueIdentifier, time: f64) {
         self.blocked_times.insert(
             self.blocked_times.len(),
-            DateTime::from(SystemTime::now()).add(TimeDelta::new(time, 0).unwrap()),
+            DateTime::from(SystemTime::now()).add(TimeDelta::new(0, (time * 1000000000.0) as u32).unwrap()),
         );
         self.searchable_users.insert(ip.clone());
     }
@@ -99,11 +99,11 @@ pub enum SiteAction {
 
 impl SiteAction {
     // MUST UPDATE ACTIONS AS WELL
-    pub fn get_limit(&self) -> i64 {
+    pub fn get_limit(&self) -> f64 {
         match self {
-            SiteAction::Search | SiteAction::Download | SiteAction::UpvoteList => 1,
-            SiteAction::Update => 60,
-            SiteAction::Upload => 60 * 60 * 24,
+            SiteAction::Search | SiteAction::Download | SiteAction::UpvoteList => 0.25,
+            SiteAction::Update => 60.0,
+            SiteAction::Upload => 60.0 * 60.0 * 12.0,
         }
     }
 }

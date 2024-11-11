@@ -102,7 +102,7 @@ pub enum APIError {
     KnownArgumentError(Error),
     #[error("IO error")]
     IOError(#[from] std::io::Error),
-    #[error("Zip error")]
+    #[error("Zip error, please confirm your beatmap file is correct and contains all needed files")]
     ZipError(Error),
     #[error("Zip download error")]
     ZipDownloadError(#[from] serenity::Error),
