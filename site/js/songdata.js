@@ -119,19 +119,24 @@ export function makeRemoveButton(button, map_id) {
 
 var user;
 
-export async function getUser(errorCallback = () => showError('This action requires being signed in!')) {
+function errorSignin() {
+    console.log("Not signed in!");
+    showError('This action requires being signed in!');
+}
+
+export async function getUser(errorCallback = errorSignin) {
     if (user == null) {
         try {
-        await runLoggedIn(async function (idToken) {
-            let temp = await fetch(`/api/account_data`, {
-                method: 'POST',
-                body: JSON.stringify({
-                    'firebaseToken': idToken,
-                })
-            });
-            user = await temp.json();
-            console.log("Loaded user ", user.id);
-        }, errorCallback);
+            await runLoggedIn(async function (idToken) {
+                let temp = await fetch(`/api/account_data`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        'firebaseToken': idToken,
+                    })
+                });
+                user = await temp.json();
+                console.log("Loaded user ", user.id);
+            }, errorCallback);
         } catch (e) {
             errorCallback(e);
             console.log("Error fetching user data: ", e);
