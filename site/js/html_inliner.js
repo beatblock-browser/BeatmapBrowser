@@ -11,6 +11,9 @@ $(document).ready(function () {
     load_if_real('#search-result-template', 'search_result.html', function () {
         document.dispatchEvent(event);
     });
+    if ($('#search-result-template').length == 0) {
+        document.dispatchEvent(event);
+    }
     load_if_real('#search-result-template-long', 'search_result.html', function () {
         $(this).children()[0].classList.remove('col-md-6');
     });

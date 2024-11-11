@@ -1,6 +1,5 @@
 import {runLoggedIn, showError} from './authentication.js';
 
-// Initialize search results on page load
 document.getElementById('uploadForm').addEventListener('submit', async function (e) {
     const uploadForm = document.getElementById('uploadForm');
     const submitButton = document.getElementById('submitButton');
@@ -14,6 +13,8 @@ document.getElementById('uploadForm').addEventListener('submit', async function 
 
         if (formData.get('beatmap').size > 20000000) {
             showError('ZIP size over 20MB limit.');
+            submitButton.disabled = false;
+            submitButton.textContent = 'Upload';
             return
         }
 
