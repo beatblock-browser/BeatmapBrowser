@@ -1,5 +1,5 @@
 <div id="search-result" class="col-md-6">
-    <div class="card custom-card text-white">
+    <div class="card custom-card text-white position-relative">
         <!-- Thumbnail Image as Background -->
         <img src="https://via.placeholder.com/600x400" class="card-img" alt="Beat Map Thumbnail">
 
@@ -20,6 +20,15 @@
                 <button type="button"
                         class="btn btn-outline-light upvote-button d-flex align-items-center justify-content-center slow-loader" disabled>
                     <span class="bi bi-hand-thumbs-up-fill upvote-count">0</span>
+                </button>
+
+                <!-- Delete Button -->
+                <button type="button"
+                        class="btn btn-danger delete-button ms-auto invisible"
+                        aria-label="Delete Level"
+                        data-bs-toggle="modal"
+                        data-bs-target="#confirmDeleteModal">
+                    <span class="bi bi-x">Delete</span>
                 </button>
             </div>
         </div>

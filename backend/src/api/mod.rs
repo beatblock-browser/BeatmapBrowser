@@ -13,6 +13,7 @@ use thiserror::Error;
 use tokio::time::error::Elapsed;
 
 pub mod account_data;
+pub mod delete;
 pub mod downloaded;
 pub mod search;
 pub mod upload;
@@ -111,6 +112,8 @@ pub enum APIError {
     SongNameError(#[from] serde_urlencoded::ser::Error),
     #[error("Served timed out reading archive")]
     TimeoutError(#[from] Elapsed),
+    #[error("You do not have permission to perform this action")]
+    PermissionError()
 }
 
 impl APIError {
@@ -126,7 +129,8 @@ impl APIError {
             | APIError::KnownArgumentError(_)
             | APIError::FormError(_)
             | APIError::SongNameError(_)
-            | APIError::ArchiveTypeError() => StatusCode::BAD_REQUEST,
+            | APIError::ArchiveTypeError()
+            | APIError::PermissionError() => StatusCode::BAD_REQUEST,
             APIError::DatabaseError(_)
             | APIError::UnknownDatabaseError(_)
             | APIError::SerdeError(_) => StatusCode::INTERNAL_SERVER_ERROR,

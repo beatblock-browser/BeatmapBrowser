@@ -29,6 +29,7 @@ use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
 use tokio::net::TcpListener;
 use crate::api::APIError;
+use crate::api::delete::delete;
 use crate::api::usersongs::usersongs;
 
 #[tokio::main]
@@ -77,6 +78,7 @@ async fn handle_request(
         (&Method::POST, "/api/remove") => remove(request, identifier, &data).await,
         (&Method::POST, "/api/account_data") => account_data(request, identifier, &data).await,
         (&Method::POST, "/api/upload") => upload(request, identifier, &data).await,
+        (&Method::POST, "/api/delete") => delete(request, identifier, &data).await,
         _ => {
             return match data
                 .site

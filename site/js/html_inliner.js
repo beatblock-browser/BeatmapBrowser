@@ -8,6 +8,7 @@ $(document).ready(function () {
     load_if_real('#navbar', 'navbar.html');
     load_if_real('#searchbar', 'searchbar.html');
     load_if_real('#footer', 'footer.html');
+    load_if_real('#delete-confirm', 'delete_confirm.html');
     load_if_real('#search-result-template', 'search_result.html', function () {
         document.dispatchEvent(event);
     });

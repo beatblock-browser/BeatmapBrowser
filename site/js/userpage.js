@@ -1,7 +1,7 @@
 // Function to handle upvoting
 import {runLoggedIn, showError} from "./authentication.js";
 import {downloadMap, removeMap} from "./oneclick_communicator.js";
-import {updateSongData, makeDownloadButton, makeUpvoteButton, getUser} from "./songdata.js";
+import {updateSongData, makeDownloadButton, makeUpvoteButton, getUser, deleteMap, ADMINS} from "./songdata.js";
 
 // Function to display search results
 async function displayUserdata() {
@@ -78,6 +78,9 @@ async function displayUserdata() {
                 clone.querySelector('.upvote-count').textContent = map.upvotes;
                 makeUpvoteButton(clone.querySelector('.upvote-button'), map.id.id['String']);
                 clone.querySelector('.upvote-button').disabled = true;
+                let deleteButton = clone.querySelector('.delete-button');
+                deleteButton.classList.remove('invisible');
+                deleteButton.onclick = async () => await deleteMap(map.id.id['String']);
 
                 // Append the clone to the results container
                 resultsContainer.appendChild(clone);
@@ -85,6 +88,11 @@ async function displayUserdata() {
         } else {
             // No results found
             resultsContainer.innerHTML = '';
+        }
+
+        const id = (await getUser()).id.id['String'];
+        if (ADMINS.includes(id) || user_id == id) {
+            document.querySelectorAll('.delete-button').forEach((element) => element.classList.remove('invisible'));
         }
 
         finishUserLoad()
