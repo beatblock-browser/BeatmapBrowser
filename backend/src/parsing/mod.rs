@@ -145,7 +145,7 @@ pub fn check_archive(file: &mut Vec<u8>) -> Result<(), Error> {
         zip.start_file(file_name, SimpleFileOptions::default())?;
         let mut zip_file = Vec::new();
         file.read_to_end(&mut zip_file)?;
-        zip.write(&zip_file)?;
+        zip.write_all(&zip_file)?;
     }
     *file = zip.finish()?.into_inner();
     Ok(())

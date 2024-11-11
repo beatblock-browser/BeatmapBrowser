@@ -1,6 +1,6 @@
 use crate::api::search::SearchArguments;
 use crate::api::APIError;
-use crate::parsing::{check_archive, get_parser, parse_archive, FileData};
+use crate::parsing::{check_archive, get_parser, parse_archive};
 use crate::util::database::{BeatMap, User};
 use crate::util::ratelimiter::{Ratelimiter, SiteAction, UniqueIdentifier};
 use crate::util::{get_beatmap_id, get_user, LockResultExt};
@@ -99,13 +99,8 @@ pub async fn upload_beatmap(
     let uuid = Uuid::new_v4();
     let path = PathBuf::from("site/output");
 
-    save_image(&mut file_data, &path, &uuid)?;
-
-    // Create the beatmap
-    fs::write(path.join(format!("{}.zip", uuid)), beatmap)?;
-
     let name = file_data.level_data.song_name.clone();
-    let beatmap = BeatMap {
+    let map_data = BeatMap {
         song: file_data.level_data.song_name,
         artist: file_data.level_data.artist,
         charter: file_data.level_data.charter,
@@ -125,7 +120,8 @@ pub async fn upload_beatmap(
     };
 
     // Save the beatmap
-    Ok(if let Ok(Some(mut map)) = db
+    let mut id;
+    let result = Ok(if let Ok(Some(mut map)) = db
         .query(format!(
             "SELECT * FROM beatmaps WHERE charter_uid == '{}' and song == $name",
             charter_id.to_string()
@@ -135,6 +131,10 @@ pub async fn upload_beatmap(
         .map_err(APIError::database_error)?
         .take::<Option<BeatMap>>(0)
     {
+        id = map.id.as_ref().unwrap().id.to_string();
+        // Fix the weird surrealdb symbols
+        id = id[3..id.len()-3].to_string();
+
         // Update the old map instead
         map.upload_date = DateTime::from(SystemTime::now());
         let Some(map): Option<BeatMap> = db
@@ -160,6 +160,7 @@ pub async fn upload_beatmap(
             return Err(APIError::Ratelimited());
         }
 
+        id = uuid.to_string();
         let map: Thing = ("beatmaps", uuid.to_string().as_str()).into();
         let Some(_): Option<User> = db
             .update(("users", charter_id.id.to_string()))
@@ -175,7 +176,7 @@ pub async fn upload_beatmap(
         };
         let Some(map): Option<BeatMap> = db
             .create(("beatmaps", uuid.to_string()))
-            .content(beatmap)
+            .content(map_data)
             .await
             .map_err(APIError::database_error)?
         else {
@@ -184,13 +185,17 @@ pub async fn upload_beatmap(
             ));
         };
         map
-    })
+    });
+
+    save_image(&mut file_data.image, &path, &id)?;
+    fs::write(path.join(format!("{}.zip", id)), beatmap)?;
+    result
 }
 
-pub fn save_image(data: &mut FileData, path: &PathBuf, uuid: &Uuid) -> Result<(), APIError> {
-    if let Some(ref image) = data.image {
+pub fn save_image(data: &mut Option<Vec<u8>>, path: &PathBuf, uuid: &str) -> Result<(), APIError> {
+    if let Some(ref image) = data {
         if image.is_empty() {
-            data.image = None;
+            *data = None;
         } else {
             let reader = ImageReader::new(Cursor::new(image)).with_guessed_format()?;
             if !reader
