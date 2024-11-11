@@ -43,6 +43,34 @@ pub struct LevelMetadata {
 #[derive(Deserialize)]
 pub struct BackgroundData {
     image: String,
+    #[serde(rename = "cyanChannel")]
+    pub cyan_channel: Option<ColorChannel>,
+    #[serde(rename = "magentaChannel")]
+    pub magenta_channel: Option<ColorChannel>,
+    #[serde(rename = "yellowChannel")]
+    pub yellow_channel: Option<ColorChannel>,
+    #[serde(rename = "redChannel")]
+    pub red_channel: Option<ColorChannel>,
+    #[serde(rename = "greenChannel")]
+    pub green_channel: Option<ColorChannel>,
+    #[serde(rename = "blueChannel")]
+    pub blue_channel: Option<ColorChannel>,
+}
+
+#[derive(Deserialize)]
+pub struct ColorChannel {
+    #[serde(rename = "r")]
+    red: u8,
+    #[serde(rename = "g")]
+    green: u8,
+    #[serde(rename = "b")]
+    blue: u8
+}
+
+impl Into<[u8; 3]> for &ColorChannel {
+    fn into(self) -> [u8; 3] {
+        [self.red, self.green, self.blue]
+    }
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]

@@ -21,8 +21,8 @@ use tokio::time::timeout;
 use crate::util::database::{BeatMap, User};
 
 // Real server
-pub const WHITELISTED_GUILDS: [u64; 1] = [1277438162641223740];
-pub const WHITELISTED_CHANNELS: [u64; 1] = [1277438949870276661];
+pub const WHITELISTED_GUILDS: [u64; 2] = [1277438162641223740, 756193219737288836];
+pub const WHITELISTED_CHANNELS: [u64; 2] = [1277438949870276661, 1244495595838640179];
 
 // Testing server
 //pub const WHITELISTED_GUILDS: [u64; 0] = [];
