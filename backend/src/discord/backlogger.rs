@@ -32,7 +32,13 @@ pub async fn update_backlog(handler: &Handler, context: &Context) -> Result<(), 
             .collect::<Vec<_>>()
             .await
         {
-            let thread = thread?;
+            let thread = match thread {
+                Ok(thread) => thread,
+                Err(error) => {
+                    println!("Error updating backlog for thread: {error:?}");
+                    continue
+                }
+            };
 
 
             if let Err(error) = update_channel(thread.id, handler.clone(), context.http.clone()).await {
