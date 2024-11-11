@@ -17,6 +17,7 @@ pub mod downloaded;
 pub mod search;
 pub mod upload;
 pub mod upvote;
+pub mod usersongs;
 
 #[derive(Serialize, Deserialize)]
 pub struct AuthenticatedRequest {

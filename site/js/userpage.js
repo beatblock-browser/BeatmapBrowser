@@ -1,32 +1,34 @@
 // Function to handle upvoting
 import {runLoggedIn, showError} from "./authentication.js";
 import {downloadMap, removeMap} from "./oneclick_communicator.js";
-import {updateSongData, makeDownloadButton, makeUpvoteButton} from "./songdata.js";
+import {updateSongData, makeDownloadButton, makeUpvoteButton, getUser} from "./songdata.js";
 
 // Function to display search results
-async function displaySearchResults() {
-    const resultsContainer = document.getElementById('search-results');
-    const noResultsContainer = document.getElementById('no-results');
+async function displayUserdata() {
+    const resultsContainer = document.getElementById('song-results');
     const template = document.getElementById('search-result-template');
 
     try {
         // Show a loading indicator (optional)
-        resultsContainer.innerHTML = '<p>Loading results...</p>';
+        resultsContainer.innerHTML = '<p>Loading songs...</p>';
 
         // Initialize the resolver outside the functions to make it accessible to both
-        let finishSearchResolve;
+        let finishUserLoad;
 
         // Create a Promise that Function A will await
         const finishedSearch = new Promise((resolve) => {
-            finishSearchResolve = resolve;
+            finishUserLoad = resolve;
         });
 
+        let user_id = window.location.user;
+        if (user_id == null) {
+            user_id = (await getUser()).id.id['String'];
+        }
         let upvoted_list = runLoggedIn((id) => updateSongData(id, finishedSearch), () => {})
-
-        // Fetch data from the /api/search endpoint
+        // Fetch data from the /api/usersongs endpoint
         let response;
         try {
-            response = await fetch(`/api/search${window.location.search}`, {
+            response = await fetch(`/api/usersongs?user=${user_id}`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json'
@@ -38,18 +40,17 @@ async function displaySearchResults() {
 
         if (response != null && response.status === 429) {
             resultsContainer.innerHTML = '';
-            showError('Please stop spamming search requests!');
+            showError('Please stop spamming page reloads!');
             return
         }
 
         if (response == null || !response.ok) {
             resultsContainer.innerHTML = '';
-            showError('Failed to search, see console log');
+            showError('Failed to find user songs, see console log');
             return
         }
 
         const searchResult = await response.json();
-        document.getElementById('search-query').textContent = searchResult.query;
         const beatMaps = searchResult.results;
 
         // Clear previous results
@@ -83,20 +84,19 @@ async function displaySearchResults() {
             });
         } else {
             // No results found
-            noResultsContainer.classList.remove('invisible');
             resultsContainer.innerHTML = '';
         }
 
-        finishSearchResolve()
+        finishUserLoad()
         await upvoted_list;
     } catch (error) {
-        console.error('Error fetching search results:', error);
+        console.error('Error fetching user songs:', error);
         resultsContainer.innerHTML = '';
-        showError('An error occurred while fetching search results. Please try again later.');
+        showError('An error occurred while fetching user data. Please try again later.');
     }
 }
 
 // Initialize search results on page load
 document.addEventListener('FinishInline', async function () {
-    await displaySearchResults();
+    await displayUserdata();
 });

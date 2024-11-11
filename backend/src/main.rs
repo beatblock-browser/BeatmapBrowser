@@ -12,7 +12,7 @@ use crate::discord::run_bot;
 use crate::util::body::EitherBody;
 use crate::util::database::connect;
 use crate::util::ratelimiter::{Ratelimiter, UniqueIdentifier};
-use anyhow::{Context, Error};
+use anyhow::Error;
 use firebase_auth::FirebaseAuth;
 use http_body_util::Full;
 use hyper::body::Bytes;
@@ -29,6 +29,7 @@ use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
 use tokio::net::TcpListener;
 use crate::api::APIError;
+use crate::api::usersongs::usersongs;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -69,6 +70,7 @@ async fn handle_request(
     let request_path = request.uri().path().to_string();
     let method = match (request.method(), &*request_path) {
         (&Method::GET, "/api/search") => search_database(request, identifier, &data).await,
+        (&Method::GET, "/api/usersongs") => usersongs(request, identifier, &data).await,
         (&Method::POST, "/api/upvote") => upvote(request, identifier, &data).await,
         (&Method::POST, "/api/unvote") => unvote(request, identifier, &data).await,
         (&Method::POST, "/api/download") => download(request, identifier, &data).await,
