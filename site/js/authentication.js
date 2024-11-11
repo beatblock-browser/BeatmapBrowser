@@ -65,29 +65,43 @@ const signalPromise = new Promise((resolve) => {
     resolveSignal = resolve;
 });
 
+var authState = null;
+var eventFired = false;
 // Authentication State Listener
 onAuthStateChanged(auth, async (user) => {
-    const loginNavLink = document.getElementById('loginNavLink');
-    const uploadNavLink = document.getElementById('uploadNavLink');
-    //const accountNavLink = document.getElementById('accountNavLink');
-    if (user) {
-        console.log('User is signed in:', user);
-        // Hide "Log In" link
-        loginNavLink.classList.add('d-none'); // Using Bootstrap's d-none class
-        // Show "Upload" and "Account" links
-        uploadNavLink.classList.remove('d-none');
-        accountNavLink.classList.remove('d-none');
-        await resolveSignal();
-    } else {
-        console.log('No user is signed in.');
-        // Show "Log In" link
-        loginNavLink.classList.remove('d-none');
-        // Hide "Upload" and "Account" links
-        uploadNavLink.classList.add('d-none');
-        accountNavLink.classList.add('d-none');
-        await resolveSignal();
-    }
+    authState = user; // Update the authState variable
+    await setupNavbar();
 });
+
+document.addEventListener('FinishInline', async () => {
+    eventFired = true; // Update the eventFired variable
+    await setupNavbar(); // Check if the auth state is known
+});
+
+async function setupNavbar() {
+    if (authState !== null && eventFired) {
+        const loginNavLink = document.getElementById('loginNavLink');
+        const uploadNavLink = document.getElementById('uploadNavLink');
+        const accountNavLink = document.getElementById('accountNavLink');
+        if (authState) {
+            console.log('User is signed in:', authState);
+            // Hide "Log In" link
+            loginNavLink.classList.add('d-none'); // Using Bootstrap's d-none class
+            // Show "Upload" and "Account" links
+            uploadNavLink.classList.remove('d-none');
+            accountNavLink.classList.remove('d-none');
+            await resolveSignal();
+        } else {
+            console.log('No user is signed in.');
+            // Show "Log In" link
+            loginNavLink.classList.remove('d-none');
+            // Hide "Upload" and "Account" links
+            uploadNavLink.classList.add('d-none');
+            accountNavLink.classList.add('d-none');
+            await resolveSignal();
+        }
+    }
+}
 
 export async function runLoggedIn(ifLoggedIn, otherwise = () => showError('This action requires being signed in!')) {
     await signalPromise;
