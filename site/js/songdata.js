@@ -1,5 +1,7 @@
 import {runLoggedIn, showError} from "./authentication.js";
 
+export const ADMINS = ["gfde6dkqtey5trmfya8h"];
+
 export function makeUpvoteButton(button, map_id) {
     button.classList.remove('btn-success');
     button.classList.add('btn-outline-light');
@@ -173,4 +175,49 @@ export async function updateSongData(idToken, finishedLoad) {
         showError('An error occurred while fetching user data. Please report this!');
         console.log("Error fetching userd data: ", e);
     }
+}
+
+
+
+export async function deleteMap(id) {
+    let shouldDelete;
+    let deleting = false;
+
+    // Create a Promise that Function A will await
+    const waitForConfirm = new Promise((resolve) => {
+        shouldDelete = resolve;
+    });
+
+    document.getElementById('cancelDeleteButton').onclick = async function() {
+        await shouldDelete();
+    }
+
+    document.getElementById('confirmDeleteButton').onclick = async function() {
+        deleting = true;
+        await shouldDelete();
+    }
+
+    await waitForConfirm;
+
+    if (!deleting) {
+        return;
+    }
+
+
+    await runLoggedIn(async function (idToken) {
+        let deleted = await fetch(`/api/delete`, {
+            method: 'POST',
+            body: JSON.stringify({
+                'firebaseToken': idToken,
+                'mapId': id
+            })
+        });
+        let result = await deleted.text();
+        if (deleted.ok) {
+            document.querySelector(`.map-${id}`).remove();
+        } else {
+            console.error('Error deleting map: ', deleted);
+            showError(result || 'An error occurred when deleting the map.');
+        }
+    });
 }

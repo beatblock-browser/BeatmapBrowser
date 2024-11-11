@@ -10,7 +10,12 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 100vh; /* Ensure the body takes at least the full viewport height */
+    margin: 0;
     font-family: Arial, sans-serif; /* Choose your preferred font */
+}
+
+.content {
+    flex: 1;
 }
 
 .login-container {
@@ -60,6 +65,11 @@ body {
 .upvote-button:hover {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5); /* Enhanced shadow on hover */
     transform: translateY(-2px); /* Slight upward movement on hover */
+}
+
+.delete-button:hover {
+    background-color: #dc3545; /* Darker red on hover */
+    color: #fff;
 }
 
 /* Style for the error message */
