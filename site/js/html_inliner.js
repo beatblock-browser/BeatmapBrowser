@@ -9,7 +9,7 @@ $(document).ready(function () {
     load_if_real('#searchbar', 'searchbar.html');
     load_if_real('#footer', 'footer.html');
     load_if_real('#search-result-template', 'search_result.html', function () {
-        document.dispatchEvent(event)
+        document.dispatchEvent(event);
     });
     load_if_real('#search-result-template-long', 'search_result.html', function () {
         $(this).children()[0].classList.remove('col-md-6');
@@ -18,7 +18,7 @@ $(document).ready(function () {
 
 function load_if_real(name, file, callback = function () {}) {
     const element = $(name);
-    if (element) {
+    if (element.length > 0) {
         element.load("templates/" + file, callback);
     }
 }

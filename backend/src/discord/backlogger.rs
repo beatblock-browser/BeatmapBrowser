@@ -18,7 +18,9 @@ pub async fn update_backlog(handler: &Handler, context: &Context) -> Result<(), 
                 continue;
             }
 
-            update_channel(thread.id, handler.clone(), context.http.clone()).await?;
+            if let Err(error) = update_channel(thread.id, handler.clone(), context.http.clone()).await {
+                println!("Error updating backlog: {error:?}")
+            }
         }
     }
     for channel in WHITELISTED_CHANNELS {
@@ -32,14 +34,19 @@ pub async fn update_backlog(handler: &Handler, context: &Context) -> Result<(), 
         {
             let thread = thread?;
 
-            update_channel(thread.id, handler.clone(), context.http.clone()).await?;
+
+            if let Err(error) = update_channel(thread.id, handler.clone(), context.http.clone()).await {
+                println!("Error updating backlog: {error:?}")
+            }
         }
-        update_channel(
+        if let Err(error) = update_channel(
             ChannelId::new(channel),
             handler.clone(),
             context.http.clone(),
         )
-        .await?;
+        .await {
+            println!("Error updating backlog: {error:?}")
+        }
     }
     println!("Done updating backlog!");
     Ok(())

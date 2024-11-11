@@ -9,24 +9,40 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
             integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
             crossorigin="anonymous"></script><link rel="stylesheet" href="css/style.css"/>
-    <link rel="stylesheet" type="text/css" href="css/style.css" media="screen"/>
+    <link rel="stylesheet" href="css/style.css"/>
     <script src="js/html_inliner.js"></script>
 </head>
 <body>
 <div id="navbar"></div>
-<div id="searchbar"></div>
 
+<!-- Main Content Start -->
 <div class="container mt-5">
-    <h1>Welcome to Beatblock Browser</h1>
-    <p>This is a <b>fan-made</b> website for uploading, browsing, and ranking Beatblock beatmaps.</p>
-    <br>
-    <h2>Version 1.2.0:</h2>
-    <p>
-        - Added the Accounts page<br>
-        - Fixed various bugs behind the scenes<br>
-        - Song syncing still isn't finished (an unexpected bug popped up). Please wait patiently until it's fixed!
-    </p>
+    <!-- User Songs -->
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Your Songs:</h2>
+            <hr>
+        </div>
+    </div>
+
+    <!-- Songs Container -->
+    <div id="song-results" class="row g-4">
+        <!-- Songs will be inserted here -->
+    </div>
+
+    <!-- Error Message -->
+    <div id="search-error" class="error-message row invisible">
+        <div class="col">
+            <p id="search-error-text"></p>
+        </div>
+    </div>
 </div>
+<!-- Main Content End -->
+
+<!-- Search Result Template -->
+<template id="search-result-template"></template>
+
+<script type="module" src="js/userpage.js"></script>
 <div id="footer"></div>
 </body>
 </html>
