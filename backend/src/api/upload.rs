@@ -208,7 +208,8 @@ pub fn save_image(data: &mut Option<Vec<u8>>, bg_data: &Option<BackgroundData>, 
             }
             match reader.decode() {
                 Ok(image) => {
-                    replace_image_channels(image.to_rgb8(), bg_data)
+                    let size = (image.width(), image.height());
+                    replace_image_channels(image.to_rgb8(), size, bg_data)
                         .save_with_format(path.join(format!("{uuid}.png")), ImageFormat::Png)
                         .map_err(|err| APIError::ZipError(Error::from(err)))?;
                 }
@@ -221,7 +222,7 @@ pub fn save_image(data: &mut Option<Vec<u8>>, bg_data: &Option<BackgroundData>, 
     Ok(())
 }
 
-fn replace_image_channels(mut img_buffer: RgbImage, bg_data: &Option<BackgroundData>) -> RgbImage {
+fn replace_image_channels(mut img_buffer: RgbImage, size: (u32, u32), bg_data: &Option<BackgroundData>) -> RgbImage {
     let Some(bg_data) = bg_data else {
         return img_buffer;
     };
@@ -244,10 +245,19 @@ fn replace_image_channels(mut img_buffer: RgbImage, bg_data: &Option<BackgroundD
     if let Some(channel) = &bg_data.yellow_channel {
         channels.insert([255, 255, 0], channel.into());
     }
+    channels.insert([255, 255, 255], [255, 255, 255]);
+    let mut i = 0;
     for pixel in img_buffer.pixels_mut() {
         if let Some(replacement) = channels.get(&pixel.0) {
             pixel.0 = *replacement;
+        } else {
+            pixel.0 = if ((i % size.0) % 2 == 0) && (i / size.0) % 2 == 0 {
+                [0, 0, 0]
+            } else {
+                [255, 0, 255]
+            }
         }
+        i += 1;
     }
     img_buffer
 }
