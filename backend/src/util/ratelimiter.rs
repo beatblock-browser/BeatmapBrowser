@@ -74,7 +74,7 @@ impl Limits {
     pub fn add_limit(&mut self, ip: &UniqueIdentifier, time: f64) {
         self.blocked_times.insert(
             self.blocked_times.len(),
-            DateTime::from(SystemTime::now()).add(TimeDelta::new(0, (time * 1000000000.0) as u32).unwrap()),
+            DateTime::from(SystemTime::now()).add(TimeDelta::new(time as i64, (time.fract() * 1000000000.0) as u32).unwrap()),
         );
         self.searchable_users.insert(ip.clone());
     }
