@@ -16,7 +16,6 @@ pub async fn delete(
         get_map_request(request, identifier, data, SiteAction::Search).await?;
 
     let user_id = user.id.unwrap().to_string();
-    println!("{} vs {}", map.charter_uid.as_ref().unwrap_or(&String::default()), user_id);
     if map.charter_uid.unwrap_or(String::default()) != user_id &&
         !ADMINS.contains(&user_id.as_ref()) {
         return Err(APIError::PermissionError());
