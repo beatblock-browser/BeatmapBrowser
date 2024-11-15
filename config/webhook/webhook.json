@@ -1,0 +1,38 @@
+[
+  {
+    "id": "deploy-webhook",
+    "execute-command": "/bin/sudo",
+    "pass-arguments-to-command": [
+      {
+        "source": "string",
+        "name": "/home/BeatmapBrowser/deploy.sh"
+      }
+    ],
+    "command-working-directory": "/home/BeatmapBrowser",
+    "response-message": "Deploying...",
+    "trigger-rule": {
+      "and": [
+        {
+          "match": {
+            "type": "payload-hmac-sha256",
+            "secret": "124305912678e7d834448a3c461366eb",
+            "parameter": {
+              "source": "header",
+              "name": "X-Hub-Signature-256"
+            }
+          }
+        },
+        {
+          "match": {
+            "type": "value",
+            "value": "refs/heads/master",
+            "parameter": {
+              "source": "payload",
+              "name": "ref"
+            }
+          }
+        }
+      ]
+    }
+  }
+]
