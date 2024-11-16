@@ -11,6 +11,7 @@ use surrealdb::Surreal;
 pub mod body;
 pub mod database;
 pub mod ratelimiter;
+pub mod auth;
 
 pub async fn collect_stream<S>(mut stream: S, max: usize) -> Result<Vec<u8>, Error>
 where

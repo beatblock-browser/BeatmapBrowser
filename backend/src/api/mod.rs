@@ -19,6 +19,7 @@ pub mod search;
 pub mod upload;
 pub mod upvote;
 pub mod usersongs;
+pub mod discord_signin;
 
 #[derive(Serialize, Deserialize)]
 pub struct AuthenticatedRequest {

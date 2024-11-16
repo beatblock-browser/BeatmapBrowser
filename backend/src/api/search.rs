@@ -19,14 +19,6 @@ pub struct SearchResult {
     pub results: Vec<BeatMap>,
 }
 
-/*
-analyzer:
-DEFINE ANALYZER ascii TOKENIZERS blank FILTERS ascii, lowercase;
-index:
-DEFINE INDEX song_name ON TABLE beatmaps FIELDS song SEARCH ANALYZER ascii;
-DEFINE INDEX artist_name ON TABLE beatmaps FIELDS artist SEARCH ANALYZER ascii;
-DEFINE INDEX charter_name ON TABLE beatmaps FIELDS charter SEARCH ANALYZER ascii;
- */
 pub async fn search_database(
     request: Request<Incoming>,
     identifier: UniqueIdentifier,
