@@ -1,13 +1,20 @@
-FROM rust:1.82
+FROM rust:latest AS builder
+
+WORKDIR /app
+COPY . .
+RUN cargo build --release --bin backend
+
+FROM debian:bullseye-slim
+RUN apt-get update && apt-get install -y nginx curl && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 FROM surrealdb/surrealdb:latest
-FROM nginx:1.27.2
 
-COPY scripts /scripts
-COPY config /config
-COPY backend /backend
-COPY site /site
-COPY oneclick /oneclick
-COPY Cargo.toml Cargo.toml
+COPY config/nginx.conf /etc/nginx/nginx.conf
 
-CMD ["scripts/setup.sh"]
-CMD ["cargo", "run", "--bin", "backend", "127.0.0.1:3000", "${DISCORD_TOKEN}"]
+# HTTP ports
+EXPOSE 80 440
+
+COPY --from=builder /app/target/release/backend /usr/local/bin/backend
+
+COPY scripts/setup.sh /usr/local/bin/setup.sh
+ENTRYPOINT ["/usr/local/bin/setup.sh"]

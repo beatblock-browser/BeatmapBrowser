@@ -5,7 +5,6 @@ use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::opt::auth::Root;
 use surrealdb::sql::Thing;
 use surrealdb::Surreal;
-use crate::util::ratelimiter::UniqueIdentifier;
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BeatMap {

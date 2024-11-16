@@ -1,3 +1,4 @@
+use std::env;
 use crate::api::APIError;
 use crate::util::ratelimiter::UniqueIdentifier;
 use crate::SiteData;
@@ -43,9 +44,10 @@ pub async fn discord_signin(
 
     let mut headers = HeaderMap::new();
     headers.insert("Content-Type", "application/x-www-form-urlencoded".parse().unwrap());
+    let secret = env::var("CLIENT_SECRET").unwrap();
     let params = [
         ("client_id", "1298420686087262269"),
-        ("client_secret", env!("CLIENT_SECRET")),
+        ("client_secret", secret.as_str()),
         ("grant_type", "authorization_code"),
         ("code", &*arguments.code),
         ("redirect_uri", "https://beatblockbrowser.me/api/discordauth"),
