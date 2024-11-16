@@ -15,6 +15,7 @@ use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use anyhow::Error;
+use serenity::small_fixed_array::FixedString;
 use surrealdb::opt::PatchOp;
 use surrealdb::Surreal;
 use tokio::time::timeout;
@@ -39,7 +40,7 @@ impl EventHandler for Handler {
     async fn message(&self, context: Context, message: Message) {
         if let Some(parent) = message
             .channel_id
-            .to_channel(&context.http)
+            .to_channel(&context.http, None)
             .await
             .unwrap()
             .guild()
@@ -108,7 +109,7 @@ impl Handler {
                     Ok(link) => {
                         found = true;
                         send_response(&http, &message, &format!("Map uploaded! Try it at https://beatblockbrowser.me/search.html?{link}")).await?;
-                        if let Err(why) = message.react(&http, ReactionType::Unicode("✔️".to_string())).await {
+                        if let Err(why) = message.react(&http, ReactionType::Unicode(FixedString::from_static_trunc("✔️"))).await {
                             println!("Error sending message: {why:?}");
                         }
                         /*if let Err(why) = message.react(&http, ReactionType::Unicode("🔼".to_string())).await {
@@ -187,7 +188,7 @@ pub async fn run_bot(
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
     // Create a new instance of the Client, logging in as a bot.
-    let mut client = Client::builder(&env!("BOT_TOKEN"), intents)
+    let mut client = Client::builder(&env::var("BOT_TOKEN").unwrap(), intents)
         .event_handler(Handler { db, ratelimit })
         .await
         .expect("Error creating client");
