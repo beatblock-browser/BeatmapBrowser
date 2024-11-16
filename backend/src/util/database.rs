@@ -5,6 +5,7 @@ use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::opt::auth::Root;
 use surrealdb::sql::Thing;
 use surrealdb::Surreal;
+use crate::util::ratelimiter::UniqueIdentifier;
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BeatMap {
@@ -30,7 +31,12 @@ pub struct User {
     pub upvoted: Vec<Thing>,
     pub id: Option<Thing>,
     pub discord_id: Option<u64>,
-    pub google_id: Option<String>,
+    pub google_id: Option<String>
+}
+
+pub struct UserToken {
+    pub user: Thing,
+    pub token: String
 }
 
 pub async fn connect() -> surrealdb::Result<Surreal<Client>> {

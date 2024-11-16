@@ -12,6 +12,7 @@ hyper-util = { version = "0.1.8", features = ["full"] }
 hyper-staticfile = "0.10.1"
 multer = {  version = "3.1.0", features = ["tokio-io"] }
 bytes = "1.7.2"
+reqwest = "0.12.9"
 
 # Util
 futures = "0.3.31"
@@ -38,5 +39,4 @@ serde_json = "1.0.128"
 chrono = { version = "0.4.38", features = ["serde"] }
 
 # Discord
-serenity = { git = "https://github.com/BigBadE/serenity" }
-oauth2 = "5.0.0-rc.1"
+serenity = { git = "https://github.com/Serenity-rs/serenity", branch = "next" }

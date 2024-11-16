@@ -183,17 +183,11 @@ pub async fn run_bot(
     db: Surreal<surrealdb::engine::remote::ws::Client>,
     ratelimit: Arc<Mutex<Ratelimiter>>,
 ) {
-    // Login with a bot token from the environment
-    let Some(token) = env::args().nth(2) else {
-        println!("No token provided, not running the bot");
-        return;
-    };
-
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
     // Create a new instance of the Client, logging in as a bot.
-    let mut client = Client::builder(&token, intents)
+    let mut client = Client::builder(&env!("BOT_TOKEN"), intents)
         .event_handler(Handler { db, ratelimit })
         .await
         .expect("Error creating client");

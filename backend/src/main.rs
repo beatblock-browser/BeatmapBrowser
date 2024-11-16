@@ -30,6 +30,7 @@ use surrealdb::Surreal;
 use tokio::net::TcpListener;
 use crate::api::APIError;
 use crate::api::delete::delete;
+use crate::api::discord_signin::discord_signin;
 use crate::api::usersongs::usersongs;
 
 #[tokio::main]
@@ -72,6 +73,7 @@ async fn handle_request(
     let method = match (request.method(), &*request_path) {
         (&Method::GET, "/api/search") => search_database(request, identifier, &data).await,
         (&Method::GET, "/api/usersongs") => usersongs(request, identifier, &data).await,
+        (&Method::GET, "/api/discordauth") => discord_signin(request, identifier, &data).await,
         (&Method::POST, "/api/upvote") => upvote(request, identifier, &data).await,
         (&Method::POST, "/api/unvote") => unvote(request, identifier, &data).await,
         (&Method::POST, "/api/download") => download(request, identifier, &data).await,
