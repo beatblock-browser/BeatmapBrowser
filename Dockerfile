@@ -25,4 +25,5 @@ COPY --from=builder /app/target/release/backend /usr/local/bin/backend
 COPY --from=builder /app/scripts/ /usr/local/bin/
 COPY --from=builder /app/config/ /usr/local/config/
 RUN chmod +x "/usr/local/bin/setup.sh"
+
 ENTRYPOINT ["/usr/local/bin/setup.sh"]
