@@ -16,6 +16,7 @@ EXPOSE 80 440
 
 COPY --from=builder /app/target/release/backend /usr/local/bin/backend
 
+# Copy builder data
 COPY --from=builder /app/scripts/ /usr/local/bin/
 COPY --from=builder /app/config/ /usr/local/config/
 RUN chmod +x "/usr/local/bin/setup.sh"
