@@ -1,8 +1,5 @@
 name: Build and Deploy to Heroku
 
-env:
-  HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-  HEROKU_EMAIL: ${{ secrets.HEROKU_EMAIL }}
 
 on:
   push:
@@ -18,7 +15,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: 'true'
-
+      - uses: akhileshns/heroku-deploy@v3.12.12 # This is the action
+        with:
+          heroku_api_key: ${{secrets.HEROKU_API_KEY}}
+          heroku_app_name: 'beatmapbrowser'
+          heroku_email: ${{secrets.HEROKU_EMAIL}}
+          usedocker: true
+          docker_build_args: SITE_CERT SITE_KEY CLIENT_SECRET BOT_TOKEN DOMAIN
+        env:
+          DOMAIN: beatmapbrowser.me
+          SITE_CERT: ${{secrets.SITE_CERT}}
+          SITE_KEY: ${{secrets.SITE_KEY}}
+          BOT_TOKEN: ${{secrets.BOT_TOKEN}}
+          CLIENT_SECRET: ${{secrets.CLIENT_SECRET}}
       - name: Log in to Heroku Container Registry
         run: |
           echo "$HEROKU_API_KEY" | docker login --username="$HEROKU_EMAIL" --password-stdin registry.heroku.com

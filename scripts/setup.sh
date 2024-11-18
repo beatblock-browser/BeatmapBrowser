@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 # Secure certs
 echo -e "Writing certs"
 echo $SITE_CERT >> /etc/ssl/certs/site.crt
