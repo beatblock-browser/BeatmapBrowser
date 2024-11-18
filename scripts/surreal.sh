@@ -1,1 +1,0 @@
-surreal start --user root --pass root "rocksdb://C:/Program Files/SurrealDB/db"

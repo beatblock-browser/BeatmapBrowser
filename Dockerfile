@@ -4,10 +4,8 @@ WORKDIR /app
 COPY . .
 RUN cargo build --release --bin backend
 
-FROM debian:bullseye-slim
-RUN apt-get update && apt-get install -y nginx curl && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-FROM surrealdb/surrealdb:latest
+FROM debian:bookworm-slim AS bullseye
+RUN apt-get update && apt-get install -y nginx curl bash libssl-dev && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY config/nginx.conf /etc/nginx/nginx.conf
 
@@ -16,5 +14,7 @@ EXPOSE 80 440
 
 COPY --from=builder /app/target/release/backend /usr/local/bin/backend
 
-COPY scripts/setup.sh /usr/local/bin/setup.sh
+COPY --from=builder /app/scripts/ /usr/local/bin/
+COPY --from=builder /app/config/ /usr/local/config/
+RUN chmod +x "/usr/local/bin/setup.sh"
 ENTRYPOINT ["/usr/local/bin/setup.sh"]
