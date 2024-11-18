@@ -3,7 +3,6 @@ FROM rust:latest AS builder
 WORKDIR /app
 COPY . .
 
-RUN git submodule sync && git submodule update --recursive
 RUN cargo build --release --bin backend
 
 FROM debian:bookworm-slim AS bullseye

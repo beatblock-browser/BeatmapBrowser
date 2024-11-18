@@ -33,6 +33,7 @@ jobs:
 
       - name: Release the image
         run: |
+          heroku container:push web --app ${{ secrets.HEROKU_APP_NAME }} && 
           heroku container:release web --app ${{ secrets.HEROKU_APP_NAME }}
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
