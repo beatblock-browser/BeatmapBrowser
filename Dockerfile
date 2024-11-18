@@ -3,6 +3,12 @@ FROM rust:latest AS builder
 WORKDIR /app
 COPY . .
 
+RUN rm -rf site
+RUN rm -rf oneclick
+
+RUN git clone https://github.com/beatblock-browser/BeatblockBrowser.git site
+RUN git clone https://github.com/BigBadE/Beatblock-Oneclick.git oneclick
+
 RUN cargo build --release --bin backend
 
 FROM debian:bookworm-slim AS bullseye
