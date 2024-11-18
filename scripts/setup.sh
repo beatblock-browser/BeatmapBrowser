@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-echo -e "Setting up"
-if [ -f /usr/local/config/config.config ]; then
-  . /usr/local/config/config.config
-else
-  . /usr/local/config/example.config
-
 # Secure certs
 echo -e "Writing certs"
 echo $SITE_CERT >> /etc/ssl/certs/site.crt
@@ -24,10 +18,10 @@ ln -s /etc/nginx/sites-available/www.site.conf /etc/nginx/sites-enabled/www.site
 curl -sSf https://install.surrealdb.com | sh
 
 echo -e "Running surrealdb"
-surreal start --user root --pass root "rocksdb:/usr/local/db" &
+surreal start --user root --pass root "rocksdb:/usr/local/db" 1>&2 &
 sleep 5
 
 nginx &
 
-exec /usr/local/bin/backend 127.0.0.1:3000
-echo "Done!"
+exec /usr/local/bin/backend 127.0.0.1:3000 1>&2
+echo -e "Done!"
