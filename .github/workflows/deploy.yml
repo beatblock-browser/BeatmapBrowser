@@ -21,28 +21,10 @@ jobs:
           heroku_app_name: 'beatmapbrowser'
           heroku_email: ${{secrets.HEROKU_EMAIL}}
           usedocker: true
-          docker_build_args: SITE_CERT SITE_KEY CLIENT_SECRET BOT_TOKEN DOMAIN
+          docker_build_args: "SITE_CERT SITE_KEY CLIENT_SECRET BOT_TOKEN DOMAIN"
         env:
           DOMAIN: beatmapbrowser.me
           SITE_CERT: ${{secrets.SITE_CERT}}
           SITE_KEY: ${{secrets.SITE_KEY}}
           BOT_TOKEN: ${{secrets.BOT_TOKEN}}
           CLIENT_SECRET: ${{secrets.CLIENT_SECRET}}
-      - name: Log in to Heroku Container Registry
-        run: |
-          echo "$HEROKU_API_KEY" | docker login --username="$HEROKU_EMAIL" --password-stdin registry.heroku.com
-
-      - name: Build Docker image
-        run: |
-          docker build -t registry.heroku.com/${{ secrets.HEROKU_APP_NAME }}/web .
-
-      - name: Push Docker image to Heroku
-        run: |
-          docker push registry.heroku.com/${{ secrets.HEROKU_APP_NAME }}/web
-
-      - name: Release the image
-        run: |
-          heroku container:push web --app ${{ secrets.HEROKU_APP_NAME }} && 
-          heroku container:release web --app ${{ secrets.HEROKU_APP_NAME }}
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
