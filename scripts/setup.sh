@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. /usr/local/config/config.config
 
 # Secure certs
 echo -e "Writing certs"
