@@ -70,6 +70,7 @@ async fn handle_request(
         SocketAddr::V6(ip) => UniqueIdentifier::Ipv6(ip.ip().clone()),
     };
     let request_path = request.uri().path().to_string();
+    println!("Reading request");
     let method = match (request.method(), &*request_path) {
         (&Method::GET, "/api/search") => search_database(request, identifier, &data).await,
         (&Method::GET, "/api/usersongs") => usersongs(request, identifier, &data).await,
@@ -86,7 +87,10 @@ async fn handle_request(
                 .site
                 .serve(request)
                 .await {
-                Ok(file) => Ok(file.map(|body| body.into())),
+                Ok(file) => {
+                    println!("Got static file!");
+                    Ok(file.map(|body| body.into()))
+                },
                 Err(error) => {
                     println!("Error serving static file: {error}");
                     Builder::new().status(StatusCode::INTERNAL_SERVER_ERROR)
