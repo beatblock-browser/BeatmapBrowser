@@ -4,6 +4,7 @@
 # Secure certs
 echo -e "Writing certs"
 echo $SITE_CERT >> /etc/ssl/certs/site.crt
+cat /etc/ssl/certs/site.crt 1>&2
 chown root:root /etc/ssl/certs/site.crt
 echo $SITE_KEY >> /etc/ssl/private/site.key
 chown root:root /etc/ssl/private/site.key
@@ -11,7 +12,6 @@ chmod 600 /etc/ssl/private/site.key
 
 # Setup site
 echo -e "Setting up site on port $PORT at $DOMAIN"
-echo -e "Test: $SITE_CERT"
 cp /usr/local/config/sites-available/*.conf /etc/nginx/sites-available/
 sed -i -e "s/{DOMAIN}/$DOMAIN/g" /etc/nginx/sites-available/*.conf
 sed -i -e "s/{PORT}/$PORT/g" /etc/nginx/sites-available/*.conf
