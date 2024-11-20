@@ -12,7 +12,7 @@ RUN git clone https://github.com/BigBadE/Beatblock-Oneclick.git oneclick
 RUN cargo build --release --bin backend
 
 FROM debian:bookworm-slim AS bullseye
-RUN apt-get update && apt-get install -y nginx curl bash libssl-dev python3 && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y nginx curl bash libssl-dev && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY config/nginx.conf /etc/nginx/nginx.conf
 
