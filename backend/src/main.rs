@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
 
     let data = SiteData {
-        site: Static::new(Path::new("site/")),
+        site: Static::new(Path::new("../site/")),
         db: connect().await?,
         auth: FirebaseAuth::new("beatblockbrowser").await,
         ratelimiter: Arc::new(Mutex::new(Ratelimiter::new())),
@@ -70,7 +70,6 @@ async fn handle_request(
         SocketAddr::V6(ip) => UniqueIdentifier::Ipv6(ip.ip().clone()),
     };
     let request_path = request.uri().path().to_string();
-    println!("Reading request");
     let method = match (request.method(), &*request_path) {
         (&Method::GET, "/api/search") => search_database(request, identifier, &data).await,
         (&Method::GET, "/api/usersongs") => usersongs(request, identifier, &data).await,
@@ -87,10 +86,7 @@ async fn handle_request(
                 .site
                 .serve(request)
                 .await {
-                Ok(file) => {
-                    println!("Got static file!");
-                    Ok(file.map(|body| body.into()))
-                },
+                Ok(file) => Ok(file.map(|body| body.into())),
                 Err(error) => {
                     println!("Error serving static file: {error}");
                     Builder::new().status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -101,7 +97,7 @@ async fn handle_request(
         }
     };
 
-    let returning = Ok(match method {
+    Ok(match method {
         Ok(query) => Builder::new()
             .status(StatusCode::OK)
             .body(Full::new(Bytes::from(format!("{query}"))).into()),
@@ -111,10 +107,7 @@ async fn handle_request(
             }
             build_request((error.get_code(), error.to_string()))
         }
-    }?);
-
-    println!("Ok!");
-    returning
+    }?)
 }
 
 async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(), Error> {
@@ -128,12 +121,7 @@ async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(),
             .timer(TokioTimer::new())
             .serve_connection(
                 TokioIo::new(stream),
-                service_fn(move |req| {
-                    let data = data.clone();
-                    let response = handle_request(req, ip, data);
-                    println!("Finished!");
-                    response
-                }),
+                service_fn(move |req| handle_request(req, ip, data.clone())),
             )
             .await
         {
