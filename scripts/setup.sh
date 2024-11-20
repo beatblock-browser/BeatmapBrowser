@@ -10,9 +10,10 @@ chown root:root /etc/ssl/private/site.key
 chmod 600 /etc/ssl/private/site.key
 
 # Setup site
-echo -e "Setting up site"
+echo -e "Setting up site on port $PORT at $DOMAIN"
 cp /usr/local/config/sites-available/*.conf /etc/nginx/sites-available/
 sed -i -e "s/{DOMAIN}/$DOMAIN/g" /etc/nginx/sites-available/*.conf
+sed -i -e "s/{PORT}/$PORT/g" /etc/nginx/sites-available/*.conf
 rm /etc/nginx/sites-enabled/default
 ln -s /etc/nginx/sites-available/www.site.conf /etc/nginx/sites-enabled/www.site.conf
 

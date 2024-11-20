@@ -3,6 +3,8 @@ FROM rust:latest AS builder
 WORKDIR /app
 COPY . .
 
+ENV PORT $PORT
+
 RUN rm -rf site
 RUN rm -rf oneclick
 
