@@ -11,6 +11,7 @@ chmod 600 /etc/ssl/private/site.key
 
 # Setup site
 echo -e "Setting up site on port $PORT at $DOMAIN"
+echo -e "Test: $SITE_CERT"
 cp /usr/local/config/sites-available/*.conf /etc/nginx/sites-available/
 sed -i -e "s/{DOMAIN}/$DOMAIN/g" /etc/nginx/sites-available/*.conf
 sed -i -e "s/{PORT}/$PORT/g" /etc/nginx/sites-available/*.conf

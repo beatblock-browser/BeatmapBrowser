@@ -18,8 +18,7 @@ RUN apt-get update && apt-get install -y nginx curl bash libssl-dev && apt-get c
 
 COPY config/nginx.conf /etc/nginx/nginx.conf
 
-# HTTP ports
-EXPOSE 80 440
+EXPOSE $PORT
 
 COPY --from=builder /app/target/release/backend /usr/local/bin/backend
 
