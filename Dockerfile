@@ -3,7 +3,9 @@ FROM rust:latest AS builder
 WORKDIR /app
 COPY . .
 
+ARG PORT=443
 ENV PORT $PORT
+RUN echo "Running on port $PORT"
 
 RUN rm -rf site
 RUN rm -rf oneclick
