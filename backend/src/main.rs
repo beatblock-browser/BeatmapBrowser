@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
 
     let data = SiteData {
-        site: Static::new(Path::new("../site/")),
+        site: Static::new(Path::new("site/")),
         db: connect().await?,
         auth: FirebaseAuth::new("beatblockbrowser").await,
         ratelimiter: Arc::new(Mutex::new(Ratelimiter::new())),
