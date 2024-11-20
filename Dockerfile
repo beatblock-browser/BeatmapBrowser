@@ -25,6 +25,9 @@ COPY --from=builder /app/target/release/backend /usr/local/bin/backend
 # Copy builder data
 COPY --from=builder /app/scripts/ /usr/local/bin/
 COPY --from=builder /app/config/ /usr/local/config/
+RUN echo "PORT=$PORT\nDOMAIN=$DOMAIN\nSITE_CERT=$SITE_CERT\nSITE_KEY=$SITE_KEY\n" > /usr/local/config/config.config
+RUN cat /usr/local/config/config.config
+
 RUN chmod +x "/usr/local/bin/setup.sh"
 
 ENTRYPOINT ["/usr/local/bin/setup.sh"]
