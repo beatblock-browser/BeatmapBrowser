@@ -116,6 +116,7 @@ async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(),
         .await
         .expect("Failed to accept TCP connection");
 
+    println!("Got connection!");
     tokio::spawn(async move {
         if let Err(err) = http1::Builder::new()
             .timer(TokioTimer::new())
