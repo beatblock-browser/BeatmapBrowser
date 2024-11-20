@@ -27,5 +27,5 @@ sleep 5
 
 #nginx &
 
-exec /usr/local/bin/backend "127.0.0.1:$PORT" 1>&2
+exec /usr/local/bin/backend "0.0.0.0:$PORT" 1>&2
 echo -e "Done!"
