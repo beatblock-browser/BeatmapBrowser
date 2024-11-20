@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+echo -e "Running test server"
+python3 -m http.server $PORT
+echo -e "Done"
+
 . /usr/local/config/config.config
 
 # Secure certs
