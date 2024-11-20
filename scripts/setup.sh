@@ -3,10 +3,9 @@
 
 # Secure certs
 echo -e "Writing certs"
-echo $SITE_CERT >> /etc/ssl/certs/site.crt
-cat /etc/ssl/certs/site.crt 1>&2
+echo "$SITE_CERT" >> /etc/ssl/certs/site.crt
 chown root:root /etc/ssl/certs/site.crt
-echo $SITE_KEY >> /etc/ssl/private/site.key
+echo "$SITE_KEY" >> /etc/ssl/private/site.key
 chown root:root /etc/ssl/private/site.key
 chmod 600 /etc/ssl/private/site.key
 
