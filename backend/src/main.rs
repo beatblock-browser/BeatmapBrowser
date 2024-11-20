@@ -3,12 +3,15 @@ mod discord;
 mod parsing;
 mod util;
 
-use std::fs;
 use crate::api::account_data::account_data;
+use crate::api::delete::delete;
+use crate::api::discord_signin::discord_signin;
 use crate::api::downloaded::{download, remove};
 use crate::api::search::search_database;
 use crate::api::upload::upload;
 use crate::api::upvote::{unvote, upvote};
+use crate::api::usersongs::usersongs;
+use crate::api::APIError;
 use crate::discord::run_bot;
 use crate::util::body::EitherBody;
 use crate::util::database::connect;
@@ -23,16 +26,12 @@ use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_staticfile::Static;
 use hyper_util::rt::{TokioIo, TokioTimer};
+use std::fs;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
 use tokio::net::TcpListener;
-use crate::api::APIError;
-use crate::api::delete::delete;
-use crate::api::discord_signin::discord_signin;
-use crate::api::usersongs::usersongs;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -40,9 +39,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
 
-    println!("Exists: {} for {}", fs::metadata("site/").is_ok(), PathBuf::from("site/").to_str().unwrap());
+    println!("Exists: {} for {}", fs::metadata("site/").is_ok(), std::env::args().nth(2).unwrap());
     let data = SiteData {
-        site: Static::new(Path::new("site/")),
+        site: Static::new(std::env::args().nth(2).unwrap()),
         db: connect().await?,
         auth: FirebaseAuth::new("beatblockbrowser").await,
         ratelimiter: Arc::new(Mutex::new(Ratelimiter::new())),
