@@ -97,7 +97,7 @@ async fn handle_request(
         }
     };
 
-    Ok(match method {
+    let returning = Ok(match method {
         Ok(query) => Builder::new()
             .status(StatusCode::OK)
             .body(Full::new(Bytes::from(format!("{query}"))).into()),
@@ -107,7 +107,10 @@ async fn handle_request(
             }
             build_request((error.get_code(), error.to_string()))
         }
-    }?)
+    }?);
+
+    println!("Ok!");
+    returning
 }
 
 async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(), Error> {
@@ -116,7 +119,6 @@ async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(),
         .await
         .expect("Failed to accept TCP connection");
 
-    println!("Got connection!");
     tokio::spawn(async move {
         if let Err(err) = http1::Builder::new()
             .timer(TokioTimer::new())
@@ -124,7 +126,9 @@ async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(),
                 TokioIo::new(stream),
                 service_fn(move |req| {
                     let data = data.clone();
-                    handle_request(req, ip, data)
+                    let response = handle_request(req, ip, data);
+                    println!("Finished!");
+                    response
                 }),
             )
             .await
