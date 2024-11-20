@@ -24,7 +24,7 @@ use hyper::{Method, Request, Response, StatusCode};
 use hyper_staticfile::Static;
 use hyper_util::rt::{TokioIo, TokioTimer};
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
 
-    println!("Exists: {}", fs::metadata("site/").is_ok());
+    println!("Exists: {} for {}", fs::metadata("site/").is_ok(), PathBuf::from("site/").to_str().unwrap());
     let data = SiteData {
         site: Static::new(Path::new("site/")),
         db: connect().await?,
