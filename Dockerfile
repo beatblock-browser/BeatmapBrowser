@@ -20,7 +20,7 @@ COPY --from=builder /app/site /usr/local/site
 COPY --from=builder /app/target/release/backend /usr/local/
 
 # Copy builder data
-COPY --from=builder /app/scripts/ /usr/local/scripts/
+COPY --from=builder /app/scripts/ /usr/local/
 COPY --from=builder /app/config/ /usr/local/config/
 
 RUN dos2unix "/usr/local/setup.sh"

@@ -27,5 +27,5 @@ sleep 5
 
 #nginx &
 
-exec ../backend "0.0.0.0:$PORT" 1>&2
+exec backend "0.0.0.0:$PORT" 1>&2
 echo -e "Done!"
