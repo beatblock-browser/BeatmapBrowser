@@ -24,7 +24,7 @@ echo -e "Running surrealdb"
 surreal start --user root --pass root "rocksdb:/usr/local/db" 1>&2 &
 sleep 5
 
-nginx &
+#nginx &
 
-exec /usr/local/bin/backend 127.0.0.1:3000 1>&2
+exec /usr/local/bin/backend "127.0.0.1:$PORT" 1>&2
 echo -e "Done!"
