@@ -2,7 +2,7 @@
 
 echo -e "Running test server"
 python3 -m http.server $PORT
-echo -e "Done"
+echo -e "Done!"
 
 . /usr/local/config/config.config
 
