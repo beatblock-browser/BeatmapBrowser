@@ -3,6 +3,7 @@ mod discord;
 mod parsing;
 mod util;
 
+use std::fs;
 use crate::api::account_data::account_data;
 use crate::api::downloaded::{download, remove};
 use crate::api::search::search_database;
@@ -39,6 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
 
+    println!("Exists: {}", fs::metadata("site/").is_ok());
     let data = SiteData {
         site: Static::new(Path::new("site/")),
         db: connect().await?,
