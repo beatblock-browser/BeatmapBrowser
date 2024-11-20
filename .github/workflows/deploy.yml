@@ -24,7 +24,7 @@ jobs:
           echo '${{ toJSON(secrets) }}' > secrets.json
       
           # Parse the JSON and write each key-value pair to config.config
-          jq -r 'to_entries | .[] | "\(.key)=\"\(.value)\""' secrets.json > config.config
+          jq -r 'to_entries | .[] | "\(.key)=\"\(.value)\""' secrets.json > config/config.config
       - name: Log in to Heroku Container Registry
         run: |
           echo "$HEROKU_API_KEY" | docker login --username="$HEROKU_EMAIL" --password-stdin registry.heroku.com
