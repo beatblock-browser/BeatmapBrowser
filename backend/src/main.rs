@@ -39,7 +39,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
 
-    println!("Exists: {} for {}", fs::metadata("site/").is_ok(), std::env::args().nth(2).unwrap());
     let data = SiteData {
         site: Static::new(std::env::args().nth(2).unwrap()),
         db: connect().await?,
