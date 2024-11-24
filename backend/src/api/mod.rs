@@ -1,4 +1,4 @@
-use crate::util::database::{BeatMap, User};
+use crate::util::database::{AccountLink, BeatMap, User};
 use crate::util::ratelimiter::{SiteAction, UniqueIdentifier};
 use crate::util::{collect_stream, get_user, LockResultExt};
 use crate::SiteData;
@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use thiserror::Error;
 use tokio::time::error::Elapsed;
+use crate::util::amazon::MAPS_TABLE_NAME;
 
 pub mod account_data;
 pub mod delete;
@@ -40,15 +41,12 @@ async fn get_map_request(
     identifier: UniqueIdentifier,
     data: &SiteData,
     action: SiteAction,
-) -> Result<(BeatMap, User, (String, String)), APIError> {
-    if data
+) -> Result<(BeatMap, User), APIError> {
+    data
         .ratelimiter
         .lock()
         .ignore_poison()
-        .check_limited(action, &identifier)
-    {
-        return Err(APIError::Ratelimited());
-    }
+        .check_limited(action, &identifier)?;
 
     let request_data = collect_stream(request.into_data_stream(), 5000)
         .await
@@ -61,18 +59,14 @@ async fn get_map_request(
         .auth
         .verify(&arguments.firebase_token)
         .map_err(|err| APIError::AuthError(err.to_string()))?;
-    let user = get_user(true, user.user_id, &data.db).await?;
+    let user = get_user(AccountLink::Google(user.user_id), &data.amazon).await?;
 
-    let Some(map): Option<BeatMap> = data
-        .db
-        .select(("beatmaps", arguments.map_id.as_str()))
+    let map = data.amazon.query_one(MAPS_TABLE_NAME, "id", arguments.map_id)
         .await
         .map_err(APIError::database_error)?
-    else {
-        return Err(APIError::UnknownMap());
-    };
+            .ok_or(APIError::UnknownMap())?;
 
-    Ok((map, user, ("beatmaps".to_string(), arguments.map_id)))
+    Ok((map, user))
 }
 
 #[derive(Error, Debug)]
@@ -85,8 +79,6 @@ pub enum APIError {
     AuthError(String),
     #[error("Database error")]
     DatabaseError(Error),
-    #[error("Unknown database error")]
-    UnknownDatabaseError(String),
     #[error("Deserialization error")]
     SerdeError(#[from] serde_json::Error),
     #[error("Already upvoted!")]
@@ -133,7 +125,6 @@ impl APIError {
             | APIError::ArchiveTypeError()
             | APIError::PermissionError() => StatusCode::BAD_REQUEST,
             APIError::DatabaseError(_)
-            | APIError::UnknownDatabaseError(_)
             | APIError::SerdeError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             APIError::ZipError(_)
             | APIError::IOError(_)

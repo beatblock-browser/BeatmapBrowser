@@ -8,6 +8,7 @@ use hyper::Request;
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 use reqwest::header::HeaderMap;
+use crate::util::database::AccountLink;
 use crate::util::get_user;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -65,9 +66,9 @@ pub async fn discord_signin(
     if !user.verified {
         return Err(APIError::AuthError("Your account's email isn't verified.".to_string()));
     }
-    let account = get_user(false, user.id, &data.db).await?;
+    let account = get_user(AccountLink::Discord(user.id.parse().unwrap()), &data.amazon).await?;
     
-    Ok(account.id.unwrap().to_string())
+    Ok(account.id.to_string())
 }
 
 async fn get_response<T: for<'a> Deserialize<'a>>(response: Response) -> Result<T, APIError> {

@@ -7,20 +7,18 @@ use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::Request;
 use std::ops::Deref;
+use crate::util::database::AccountLink;
 
 pub async fn account_data(
     request: Request<Incoming>,
     identifier: UniqueIdentifier,
     data: &SiteData,
 ) -> Result<String, APIError> {
-    if data
+    data
         .ratelimiter
         .lock()
         .ignore_poison()
-        .check_limited(SiteAction::UpvoteList, &identifier)
-    {
-        return Err(APIError::Ratelimited());
-    }
+        .check_limited(SiteAction::UpvoteList, &identifier)?;
 
     let request_data = collect_stream(request.into_data_stream(), 5000)
         .await
@@ -33,6 +31,6 @@ pub async fn account_data(
         .auth
         .verify(&arguments.firebase_token)
         .map_err(|err| APIError::AuthError(err.to_string()))?;
-    let user = get_user(true, user.user_id, &data.db).await?;
+    let user = get_user(AccountLink::Google(user.user_id), &data.amazon).await?;
     Ok(serde_json::to_string(&user)?)
 }

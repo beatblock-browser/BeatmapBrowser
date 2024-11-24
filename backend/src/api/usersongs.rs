@@ -7,6 +7,7 @@ use anyhow::Error;
 use hyper::body::Incoming;
 use hyper::Request;
 use serde::{Deserialize, Serialize};
+use crate::util::amazon::{MAPS_TABLE_NAME, USERS_TABLE_NAME};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserpageArguments {
@@ -23,36 +24,24 @@ pub async fn usersongs(
     identifier: UniqueIdentifier,
     data: &SiteData,
 ) -> Result<String, APIError> {
-    if data
+    data
         .ratelimiter
         .lock()
         .ignore_poison()
-        .check_limited(SiteAction::Search, &identifier)
-    {
-        return Err(APIError::Ratelimited());
-    }
-
-    let Ok(arguments) =
-        serde_urlencoded::from_str::<UserpageArguments>(request.uri().query().unwrap_or(""))
-    else {
-        return Err(APIError::QueryError(Error::msg(
+        .check_limited(SiteAction::Search, &identifier)?;
+    
+    let arguments = serde_urlencoded::from_str::<UserpageArguments>(request.uri().query().unwrap_or(""))
+        .map_err(|_| APIError::QueryError(Error::msg(
             "Invalid userpage arguments!",
-        )));
-    };
+        )))?;
 
-    let Some(user): Option<User> = data.db.select(("users", &arguments.user)).await
-        .map_err(APIError::database_error)? else {
-        return Err(APIError::KnownArgumentError(Error::msg("No user with that id")))
-    };
-
-    let mut maps: Vec<BeatMap> = data
-        .db
-        .query(
-            format!("SELECT * FROM beatmaps WHERE charter_uid == '{}'", user.id.unwrap().to_string()),
-        )
+    let user: User = data.amazon.query_one(USERS_TABLE_NAME, "id", arguments.user)
         .await
         .map_err(|err| APIError::DatabaseError(err.into()))?
-        .take(0)
+        .ok_or(APIError::KnownArgumentError(Error::msg("No user with that id")))?;
+    
+    let mut maps: Vec<BeatMap> = data.amazon.query(MAPS_TABLE_NAME, "charter_uid", user.id.to_string())
+        .await
         .map_err(|err| APIError::DatabaseError(err.into()))?;
     maps.sort_by(|first, second| first.upvotes.cmp(&second.upvotes).reverse());
     serde_json::to_string(&SongsResult {
