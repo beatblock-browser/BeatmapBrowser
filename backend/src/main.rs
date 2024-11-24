@@ -4,10 +4,14 @@ mod parsing;
 mod util;
 
 use crate::api::account_data::account_data;
+use crate::api::delete::delete;
+use crate::api::discord_signin::discord_signin;
 use crate::api::downloaded::{download, remove};
 use crate::api::search::search_database;
 use crate::api::upload::upload;
 use crate::api::upvote::{unvote, upvote};
+use crate::api::usersongs::usersongs;
+use crate::api::APIError;
 use crate::discord::run_bot;
 use crate::util::body::EitherBody;
 use crate::util::ratelimiter::{Ratelimiter, UniqueIdentifier};
@@ -22,13 +26,8 @@ use hyper::{Method, Request, Response, StatusCode};
 use hyper_staticfile::Static;
 use hyper_util::rt::{TokioIo, TokioTimer};
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
-use crate::api::APIError;
-use crate::api::delete::delete;
-use crate::api::discord_signin::discord_signin;
-use crate::api::usersongs::usersongs;
 use crate::util::amazon::{setup, Amazon};
 
 #[tokio::main]
@@ -38,9 +37,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
 
     let data = SiteData {
-        site: Static::new(Path::new("site/")),
-        amazon: setup().await?,
+        site: Static::new(std::env::args().nth(2).unwrap()),
         auth: FirebaseAuth::new("beatblockbrowser").await,
+        amazon: setup().await?,
         ratelimiter: Arc::new(Mutex::new(Ratelimiter::new())),
     };
 

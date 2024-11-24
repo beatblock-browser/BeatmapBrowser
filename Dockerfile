@@ -12,16 +12,18 @@ RUN git clone https://github.com/BigBadE/Beatblock-Oneclick.git oneclick
 RUN cargo build --release --bin backend
 
 FROM debian:bookworm-slim AS bullseye
-RUN apt-get update && apt-get install -y nginx curl bash libssl-dev && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y nginx curl bash libssl-dev dos2unix && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY config/nginx.conf /etc/nginx/nginx.conf
 
-COPY --from=builder /app/target/release/backend /usr/local/bin/backend
+COPY --from=builder /app/site /usr/local/site
+COPY --from=builder /app/target/release/backend /usr/local/
 
 # Copy builder data
-COPY --from=builder /app/scripts/ /usr/local/bin/
+COPY --from=builder /app/scripts/ /usr/local/
 COPY --from=builder /app/config/ /usr/local/config/
 
-RUN chmod +x "/usr/local/bin/setup.sh"
+RUN dos2unix "/usr/local/setup.sh"
+RUN chmod +x "/usr/local/setup.sh"
 
-ENTRYPOINT ["/usr/local/bin/setup.sh"]
+ENTRYPOINT ["/usr/local/setup.sh"]
