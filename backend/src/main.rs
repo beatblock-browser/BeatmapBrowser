@@ -10,7 +10,6 @@ use crate::api::upload::upload;
 use crate::api::upvote::{unvote, upvote};
 use crate::discord::run_bot;
 use crate::util::body::EitherBody;
-use crate::util::database::connect;
 use crate::util::ratelimiter::{Ratelimiter, UniqueIdentifier};
 use anyhow::Error;
 use firebase_auth::FirebaseAuth;
@@ -25,13 +24,12 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use surrealdb::engine::remote::ws::Client;
-use surrealdb::Surreal;
 use tokio::net::TcpListener;
 use crate::api::APIError;
 use crate::api::delete::delete;
 use crate::api::discord_signin::discord_signin;
 use crate::api::usersongs::usersongs;
+use crate::util::amazon::{setup, Amazon};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -40,13 +38,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
 
     let data = SiteData {
-        site: Static::new(Path::new("../site/")),
-        db: connect().await?,
+        site: Static::new(Path::new("site/")),
+        amazon: setup().await?,
         auth: FirebaseAuth::new("beatblockbrowser").await,
         ratelimiter: Arc::new(Mutex::new(Ratelimiter::new())),
     };
 
-    let _ = tokio::spawn(run_bot(data.db.clone(), data.ratelimiter.clone()));
+    let _ = tokio::spawn(run_bot(data.clone()));
 
     let listener = TcpListener::bind(addr)
         .await
@@ -63,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 async fn handle_request(
     request: Request<hyper::body::Incoming>,
     ip: SocketAddr,
-    data: SiteData,
+    mut data: SiteData,
 ) -> Result<Response<EitherBody>, Error> {
     let identifier = match ip {
         SocketAddr::V4(ip) => UniqueIdentifier::Ipv4(ip.ip().clone()),
@@ -79,7 +77,7 @@ async fn handle_request(
         (&Method::POST, "/api/download") => download(request, identifier, &data).await,
         (&Method::POST, "/api/remove") => remove(request, identifier, &data).await,
         (&Method::POST, "/api/account_data") => account_data(request, identifier, &data).await,
-        (&Method::POST, "/api/upload") => upload(request, identifier, &data).await,
+        (&Method::POST, "/api/upload") => upload(request, identifier, &mut data).await,
         (&Method::POST, "/api/delete") => delete(request, identifier, &data).await,
         _ => {
             return match data
@@ -140,7 +138,7 @@ fn build_request(data: (StatusCode, String)) -> Result<Response<EitherBody>, hyp
 #[derive(Clone)]
 pub struct SiteData {
     site: Static,
-    db: Surreal<Client>,
     auth: FirebaseAuth,
+    amazon: Amazon,
     ratelimiter: Arc<Mutex<Ratelimiter>>,
 }

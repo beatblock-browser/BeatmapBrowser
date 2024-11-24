@@ -1,9 +1,9 @@
 use crate::api::{get_map_request, APIError};
-use crate::util::database::BeatMap;
 use crate::util::ratelimiter::{SiteAction, UniqueIdentifier};
 use crate::SiteData;
 use hyper::body::Incoming;
 use hyper::Request;
+use crate::util::amazon::{MAPS_TABLE_NAME, USERS_TABLE_NAME};
 
 pub const ADMINS: [&'static str; 1] = ["gfde6dkqtey5trmfya8h"];
 
@@ -12,16 +12,18 @@ pub async fn delete(
     identifier: UniqueIdentifier,
     data: &SiteData,
 ) -> Result<String, APIError> {
-    let (map, user, map_id) =
+    let (map, mut user) =
         get_map_request(request, identifier, data, SiteAction::Search).await?;
 
-    let user_id = user.id.unwrap().to_string();
-    if map.charter_uid.unwrap_or(String::default()) != user_id &&
-        !ADMINS.contains(&user_id.as_ref()) {
+    if map.charter_uid != user.id && !ADMINS.contains(&user.id.to_string().as_str()) {
         return Err(APIError::PermissionError());
     }
-
-    let _: Option<BeatMap> = data.db.delete(map_id).await
+    
+    user.maps.remove(user.maps.iter().position(|elem| elem == &map.id).ok_or(APIError::AlreadyDownloaded())?);
+    data.amazon.remove(MAPS_TABLE_NAME, "id", map.id.to_string()).await
         .map_err(APIError::database_error)?;
+    data.amazon.overwrite_list(USERS_TABLE_NAME, user.id.to_string(), "maps", user.maps).await?;
+    data.amazon.delete_object(format!("{}.zip", map.id).as_str()).await.map_err(APIError::database_error)?;
+    data.amazon.delete_object(format!("{}.png", map.id).as_str()).await.map_err(APIError::database_error)?;
     Ok("Song deleted!".to_string())
 }

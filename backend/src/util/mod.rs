@@ -1,13 +1,13 @@
 use crate::api::APIError;
-use crate::util::database::User;
+use crate::util::amazon::{Amazon, USERS_TABLE_NAME};
+use crate::util::database::{AccountLink, User};
 use anyhow::Error;
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use std::sync::LockResult;
-use surrealdb::engine::remote::ws::Client;
-use surrealdb::sql::Thing;
-use surrealdb::Surreal;
+use uuid::Uuid;
 
+pub mod amazon;
 pub mod body;
 pub mod database;
 pub mod ratelimiter;
@@ -34,67 +34,47 @@ where
     Ok(collected)
 }
 
-pub async fn get_user(google: bool, id: String, db: &Surreal<Client>) -> Result<User, APIError> {
-    let default_user = if google {
-        User {
-            google_id: Some(id.clone()),
-            ..Default::default()
-        }
-    } else {
-        User {
-            discord_id: Some(id.parse().unwrap()),
-            ..Default::default()
-        }
-    };
-    let checking = if google {
-        format!("google_id == '{}'", id)
-    } else {
-        format!("discord_id == {}", id)
-    };
+pub async fn get_user(account_link: AccountLink, amazon: &Amazon) -> Result<User, APIError> {
     get_or_create_user(
-        format!("SELECT * FROM users WHERE {}", checking),
-        db,
-        default_user,
+        account_link.clone(),
+        amazon,
+        move || User {
+            id: Uuid::new_v4(),
+            links: vec![account_link.clone()],
+            ..Default::default()
+        },
     )
     .await
 }
 
-pub async fn get_or_create_user(
-    query: String,
-    db: &Surreal<Client>,
-    default_user: User,
+pub async fn get_or_create_user<F: Fn() -> User>(
+    account_link: AccountLink,
+    amazon: &Amazon,
+    default_user: F,
 ) -> Result<User, APIError> {
-    Ok(
-        if let Some(id) = db
-            .query(query)
-            .await
-            .map_err(APIError::database_error)?
-            .take::<Option<User>>(0)
-            .map_err(APIError::database_error)?
-        {
-            id
-        } else {
-            let Some(user): Option<User> = db
-                .create("users")
-                .content(default_user)
-                .await
-                .map_err(APIError::database_error)?
-            else {
-                return Err(APIError::UnknownDatabaseError(
-                    "Failed to create a user in the users database".to_string(),
-                ));
-            };
-            user
-        },
-    )
+    if let Some(user) = amazon.query_by_link(account_link)
+        .await
+        .map_err(APIError::database_error)? {
+        return Ok(user);
+    }
+    let user = default_user();
+    amazon.upload(USERS_TABLE_NAME, &user, None::<&Vec<String>>)
+        .await
+        .map_err(APIError::database_error)?;
+    Ok(user)
 }
 
-pub fn get_beatmap_id(thing: &Thing) -> (String, String) {
-    (
-        thing.tb.clone(),
-        thing.id.to_string()[3..thing.id.to_string().len() - 3].to_string(),
-    )
-        .into()
+pub fn get_search_combos(input: &String) -> Vec<String> {
+    let mut output = input.chars().take(6).fold(vec![], |mut acc, c| {
+        if acc.is_empty() {
+            acc.push(c.to_string());
+        } else {
+            acc.push(format!("{}{}", acc.last().unwrap(), c));
+        }
+        acc
+    });
+    output.push(input.clone());
+    output
 }
 
 pub trait LockResultExt {

@@ -1,31 +1,27 @@
-use std::collections::HashMap;
 use crate::api::search::SearchArguments;
 use crate::api::APIError;
 use crate::parsing::{check_archive, get_parser, parse_archive, BackgroundData};
-use crate::util::database::{BeatMap, User};
-use crate::util::ratelimiter::{Ratelimiter, SiteAction, UniqueIdentifier};
-use crate::util::{get_beatmap_id, get_user, LockResultExt};
+use crate::util::amazon::{Amazon, MAPS_TABLE_NAME, USERS_TABLE_NAME};
+use crate::util::database::{AccountLink, BeatMap, MapID, UserID};
+use crate::util::ratelimiter::{SiteAction, UniqueIdentifier};
+use crate::util::{get_user, LockResultExt};
 use crate::SiteData;
 use anyhow::Error;
+use aws_sdk_dynamodb::types::AttributeValue;
 use chrono::{DateTime, Utc};
 use firebase_auth::FirebaseUser;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::header::CONTENT_TYPE;
 use hyper::Request;
-use image::{ImageFormat, ImageReader, RgbImage};
+use image::codecs::png::PngEncoder;
+use image::{ImageEncoder, ImageFormat, ImageReader, PixelWithColorType, Rgb, RgbImage};
 use multer::{Constraints, Field, Multipart, SizeLimit};
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::ops::DerefMut;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
-use surrealdb::engine::remote::ws::Client;
-use surrealdb::opt::PatchOp;
-use surrealdb::sql::Thing;
-use surrealdb::Surreal;
 use tokio::time::timeout;
 use uuid::Uuid;
 
@@ -39,190 +35,165 @@ pub struct UploadForm {
     beatmap: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserMapUpdate {
-    maps: Vec<Thing>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserId {
-    id: Thing,
-}
-
 pub async fn upload(
     request: Request<Incoming>,
     identifier: UniqueIdentifier,
-    data: &SiteData,
+    data: &mut SiteData,
 ) -> Result<String, APIError> {
-    if data
-        .ratelimiter
+    data.ratelimiter
         .lock()
         .ignore_poison()
-        .check_limited(SiteAction::Update, &identifier)
-    {
-        return Err(APIError::Ratelimited());
-    }
+        .check_limited(SiteAction::Update, &identifier)?;
+
     let form = get_form(request).await?;
     let user: FirebaseUser = data
         .auth
         .verify(&form.firebase_token)
         .map_err(|err| APIError::AuthError(err.to_string()))?;
-    let id = get_user(true, user.user_id, &data.db).await?;
+    let id = get_user(AccountLink::Google(user.user_id), &data.amazon).await?;
     let map = timeout(
-        Duration::from_millis(1000),
-        upload_beatmap(
-            form.beatmap,
-            &data.db,
-            &data.ratelimiter,
-            identifier,
-            id.id.unwrap(),
-        ),
+        Duration::from_millis(10000),
+        upload_beatmap(form.beatmap, data, identifier, id.id),
     )
-        .await??;
+    .await??;
 
     serde_urlencoded::to_string(&SearchArguments {
         query: map.song.clone(),
     })
-        .map_err(|err| APIError::SongNameError(err))
+    .map_err(|err| APIError::SongNameError(err))
 }
 
 pub async fn upload_beatmap(
-    mut beatmap: Vec<u8>,
-    db: &Surreal<Client>,
-    ratelimiter: &Arc<Mutex<Ratelimiter>>,
+    mut beatmap_data: Vec<u8>,
+    data: &SiteData,
     ip: UniqueIdentifier,
-    charter_id: Thing,
+    charter_id: UserID,
 ) -> Result<BeatMap, APIError> {
-    let mut file_data =
-        parse_archive(get_parser(&mut beatmap)?.deref_mut()).map_err(APIError::ZipError)?;
-    check_archive(&mut beatmap).map_err(APIError::ZipError)?;
-
-    let uuid = Uuid::new_v4();
-    let path = PathBuf::from("site/output");
-
-    let name = file_data.level_data.song_name.clone();
-    let map_data = BeatMap {
-        song: file_data.level_data.song_name,
-        artist: file_data.level_data.artist,
-        charter: file_data.level_data.charter,
-        difficulties: file_data
-            .level_data
-            .difficulty
-            .map_or(file_data.level_data.variants, |diff| vec![diff.into()]),
-        description: file_data.level_data.description,
-        artist_list: file_data.level_data.artist_list,
-        charter_uid: Some(charter_id.to_string()),
-        image: file_data.image.as_ref().map(|_| format!("{}.png", uuid)),
-        download: format!("{}.zip", uuid),
-        upvotes: 0,
-        upload_date: DateTime::from(SystemTime::now()),
-        update_date: DateTime::from(SystemTime::now()),
-        id: None,
-    };
+    let (mut beatmap, image, bg_data) = create_beatmap(&mut beatmap_data, charter_id)?;
 
     // Save the beatmap
-    let mut id;
-    let result = Ok(if let Ok(Some(mut map)) = db
-        .query(format!(
-            "SELECT * FROM beatmaps WHERE charter_uid == '{}' and song == $name",
-            charter_id.to_string()
-        ))
-        .bind(("name", name.clone()))
+    if let Some(map) = data
+        .amazon
+        .query(MAPS_TABLE_NAME, "charter_uid", charter_id.to_string())
         .await
         .map_err(APIError::database_error)?
-        .take::<Option<BeatMap>>(0)
+        .into_iter()
+        .filter(|map: &BeatMap| map.song == beatmap.song)
+        .next()
     {
-        id = map.id.as_ref().unwrap().id.to_string();
-        // Fix the weird surrealdb symbols
-        id = id[3..id.len() - 3].to_string();
-
         // Update the old map instead
-        map.upload_date = DateTime::from(SystemTime::now());
-        let Some(map): Option<BeatMap> = db
-            .update(get_beatmap_id(map.id.as_ref().unwrap()))
-            .patch(PatchOp::replace(
-                "update_date",
-                DateTime::<Utc>::from(SystemTime::now()),
-            ))
-            .await
-            .map_err(APIError::database_error)?
-        else {
-            return Err(APIError::UnknownDatabaseError(
-                "Failed to update the map timestamp".to_string(),
-            ));
-        };
-        map
-    } else {
-        if ratelimiter
-            .lock()
-            .ignore_poison()
-            .check_limited(SiteAction::Upload, &ip)
-        {
-            return Err(APIError::Ratelimited());
-        }
-
-        id = uuid.to_string();
-        let map: Thing = ("beatmaps", uuid.to_string().as_str()).into();
-        let Some(_): Option<User> = db
-            .update(("users", charter_id.id.to_string()))
-            .merge(UserMapUpdate {
-                maps: vec![map.clone()],
+        beatmap.id = map.id;
+        data.amazon
+            .update(MAPS_TABLE_NAME, beatmap.id.to_string(), |builder| {
+                builder
+                    .update_expression("SET upload_date = :date")
+                    .expression_attribute_values(
+                        ":date",
+                        AttributeValue::S(<DateTime<Utc> as ToString>::to_string(&DateTime::from(SystemTime::now()))),
+                    )
             })
             .await
-            .map_err(APIError::database_error)?
-        else {
-            return Err(APIError::UnknownDatabaseError(
-                "Failed to update the user's maps".to_string(),
-            ));
-        };
-        let Some(map): Option<BeatMap> = db
-            .create(("beatmaps", uuid.to_string()))
-            .content(map_data)
-            .await
-            .map_err(APIError::database_error)?
-        else {
-            return Err(APIError::UnknownDatabaseError(
-                "Failed to create the beatmap".to_string(),
-            ));
-        };
-        map
-    });
+            .map_err(APIError::database_error)?;
+    } else {
+        data.ratelimiter
+            .lock()
+            .ignore_poison()
+            .check_limited(SiteAction::Upload, &ip)?;
 
-    save_image(&mut file_data.image, &file_data.level_data.bg_data, &path, &id)?;
-    fs::write(path.join(format!("{}.zip", id)), beatmap)?;
-    result
+        data.amazon
+            .add_to_list(
+                USERS_TABLE_NAME,
+                charter_id.to_string(),
+                "maps",
+                beatmap.id.to_string(),
+            )
+            .await?;
+        data.amazon
+            .upload_song(&beatmap)
+            .await
+            .map_err(APIError::database_error)?;
+    }
+
+    save_image(&image, &bg_data, &data.amazon, &beatmap.id).await?;
+    data.amazon
+        .upload_object(beatmap_data, format!("{}.zip", beatmap.id).as_str())
+        .await
+        .map_err(APIError::database_error)?;
+    Ok(beatmap)
 }
 
-pub fn save_image(data: &mut Option<Vec<u8>>, bg_data: &Option<BackgroundData>, path: &PathBuf, uuid: &str) -> Result<(), APIError> {
-    if let Some(ref image) = data {
-        if image.is_empty() {
-            *data = None;
-        } else {
-            let reader = ImageReader::new(Cursor::new(image)).with_guessed_format()?;
-            if !reader
-                .format()
-                .is_some_and(|format| SUPPORTED_FORMATS.contains(&format))
-            {
-                return Err(APIError::ZipError(Error::msg(
-                    format!("Unknown or unsupported background image format, please use png, bmp or jpeg! {:?}", reader.format()))));
-            }
-            match reader.decode() {
-                Ok(image) => {
-                    let size = (image.width(), image.height());
-                    replace_image_channels(image.to_rgb8(), size, bg_data)
-                        .save_with_format(path.join(format!("{uuid}.png")), ImageFormat::Png)
-                        .map_err(|err| APIError::ZipError(Error::from(err)))?;
-                }
-                Err(err) => {
-                    return Err(APIError::ZipError(Error::from(err)));
-                }
-            }
-        }
+pub fn create_beatmap(
+    beatmap: &mut Vec<u8>,
+    charter_id: UserID,
+) -> Result<(BeatMap, Option<Vec<u8>>, Option<BackgroundData>), APIError> {
+    let file_data = 
+        parse_archive(get_parser(beatmap)?.deref_mut()).map_err(APIError::ZipError)?;
+    check_archive(beatmap).map_err(APIError::ZipError)?;
+
+    Ok((
+        BeatMap {
+            song: file_data.level_data.song_name,
+            artist: file_data.level_data.artist,
+            charter: file_data.level_data.charter,
+            difficulties: file_data
+                .level_data
+                .difficulty
+                .map_or(file_data.level_data.variants, |diff| vec![diff.into()]),
+            description: file_data.level_data.description,
+            artist_list: file_data.level_data.artist_list,
+            charter_uid: charter_id,
+            image: file_data.image.is_some(),
+            upvotes: 0,
+            upload_date: DateTime::from(SystemTime::now()),
+            update_date: DateTime::from(SystemTime::now()),
+            id: Uuid::new_v4(),
+        },
+        file_data.image,
+        file_data.level_data.bg_data,
+    ))
+}
+
+pub async fn save_image(
+    data: &Option<Vec<u8>>,
+    bg_data: &Option<BackgroundData>,
+    amazon: &Amazon,
+    uuid: &MapID,
+) -> Result<(), APIError> {
+    let Some(ref image) = data else {
+        return Ok(());
+    };
+    if image.is_empty() {
+        return Ok(());
     }
+    let reader = ImageReader::new(Cursor::new(image)).with_guessed_format()?;
+    if !reader
+        .format()
+        .is_some_and(|format| SUPPORTED_FORMATS.contains(&format))
+    {
+        return Err(APIError::ZipError(Error::msg(format!(
+            "Unknown or unsupported background image format, please use png, bmp or jpeg! {:?}",
+            reader.format()
+        ))));
+    }
+
+    let image = reader
+        .decode()
+        .map_err(|err| APIError::ZipError(Error::from(err)))?;
+    let size = (image.width(), image.height());
+    let mut output = Vec::new();
+    let image = replace_image_channels(image.to_rgb8(), size, bg_data);
+    PngEncoder::new(&mut output).write_image(image.as_ref(), size.0, size.1, <Rgb<u8> as PixelWithColorType>::COLOR_TYPE)
+        .map_err(|err| APIError::ZipError(err.into()))?;
+    amazon.upload_object(output, format!("{uuid}.png").as_str()).await
+        .map_err(APIError::database_error)?;
     Ok(())
 }
 
-fn replace_image_channels(mut img_buffer: RgbImage, size: (u32, u32), bg_data: &Option<BackgroundData>) -> RgbImage {
+fn replace_image_channels(
+    mut img_buffer: RgbImage,
+    size: (u32, u32),
+    bg_data: &Option<BackgroundData>,
+) -> RgbImage {
     let Some(bg_data) = bg_data else {
         return img_buffer;
     };

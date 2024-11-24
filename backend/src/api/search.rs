@@ -24,14 +24,11 @@ pub async fn search_database(
     identifier: UniqueIdentifier,
     data: &SiteData,
 ) -> Result<String, APIError> {
-    if data
+    data
         .ratelimiter
         .lock()
         .ignore_poison()
-        .check_limited(SiteAction::Search, &identifier)
-    {
-        return Err(APIError::Ratelimited());
-    }
+        .check_limited(SiteAction::Search, &identifier)?;
 
     let Ok(arguments) =
         serde_urlencoded::from_str::<SearchArguments>(request.uri().query().unwrap_or(""))
@@ -41,16 +38,7 @@ pub async fn search_database(
         )));
     };
 
-    let mut maps: Vec<BeatMap> = data
-        .db
-        .query(
-            "SELECT * FROM beatmaps WHERE song @@ $query OR artist @@ $query OR charter @@ $query",
-        )
-        .bind(("query", arguments.query.clone()))
-        .await
-        .map_err(|err| APIError::DatabaseError(err.into()))?
-        .take(0)
-        .map_err(|err| APIError::DatabaseError(err.into()))?;
+    let mut maps: Vec<BeatMap> = data.amazon.search_songs(&arguments.query).await.map_err(APIError::database_error)?;
     maps.sort_by(|first, second| first.upvotes.cmp(&second.upvotes).reverse());
     serde_json::to_string(&SearchResult {
         query: arguments.query,

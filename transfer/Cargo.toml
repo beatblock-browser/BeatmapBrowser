@@ -1,6 +1,6 @@
 [package]
-name = "backend"
-version = "1.4.0"
+name = "transfer"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
@@ -33,6 +33,7 @@ uuid = { version = "1.10.0", features = ["v4", "serde", "fast-rng", "macro-diagn
 aws-sdk-s3 = "1.62.0"
 aws-config = "1.5.10"
 aws-sdk-dynamodb = "1.54.0"
+surrealdb = "2.1.0"
 
 # Serialization
 serde = { version = "1.0.210", features = ["derive"] }

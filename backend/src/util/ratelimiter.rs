@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::ops::Add;
 use std::time::SystemTime;
+use crate::api::APIError;
 
 pub struct Ratelimiter {
     limits: HashMap<SiteAction, Limits>,
@@ -24,13 +25,15 @@ impl Ratelimiter {
         Ratelimiter { limits }
     }
 
-    pub fn check_limited(&mut self, action: SiteAction, ip: &UniqueIdentifier) -> bool {
+    pub fn check_limited(&mut self, action: SiteAction, ip: &UniqueIdentifier) -> Result<(), APIError> {
         let limit = self.limits.get_mut(&action).unwrap();
-        let output = limit.check_limited(ip);
+        if limit.check_limited(ip) {
+            return Err(APIError::Ratelimited())
+        }
         limit.add_limit(ip, action.get_limit());
-        output
+        Ok(())
     }
-
+    
     pub fn clear(&mut self) {
         self.limits.clear();
         for action in ACTIONS {
