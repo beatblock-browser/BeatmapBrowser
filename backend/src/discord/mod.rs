@@ -2,6 +2,7 @@ mod backlogger;
 
 use crate::api::search::SearchArguments;
 use crate::api::upload::{upload_beatmap, MAX_SIZE};
+use crate::api::upvote::upvote_for_map;
 use crate::api::APIError;
 use crate::discord::backlogger::update_backlog;
 use crate::util::database::AccountLink;
@@ -15,11 +16,9 @@ use serenity::model::channel::Message;
 use serenity::prelude::*;
 use serenity::small_fixed_array::FixedString;
 use std::collections::HashSet;
-use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
-use crate::api::upvote::upvote_for_map;
 
 // Real server
 pub const WHITELISTED_GUILDS: [u64; 1] = [1277438162641223740];
@@ -175,7 +174,7 @@ pub async fn run_bot(data: SiteData) {
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
     // Create a new instance of the Client, logging in as a bot.
-    let mut client = Client::builder(&env::var("BOT_TOKEN").unwrap(), intents)
+    let mut client = Client::builder(Token::from_env("BOT_TOKEN").unwrap(), intents)
         .event_handler(Handler { data })
         .await
         .expect("Error creating client");
