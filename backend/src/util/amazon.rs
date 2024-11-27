@@ -74,9 +74,7 @@ impl Amazon {
     }
 
     pub async fn upload_song(&self, song: &BeatMap) -> Result<(), Error> {
-        let mut prefixes = get_search_combos(&song.song);
-        prefixes.push(song.artist.clone());
-        prefixes.push(song.charter.clone());
+        let prefixes = get_search_combos(&song);
         self.upload(MAPS_TABLE_NAME, &song, Some(&HashMap::from([("title_prefix".to_string(), prefixes)]))).await
     }
 
@@ -103,13 +101,14 @@ impl Amazon {
         &self,
         query: &str,
     ) -> Result<Vec<BeatMap>, Error> {
+        println!("Searching {}", query.to_lowercase().chars().filter(|c| !c.is_alphabetic()).collect());
         // Perform a query on the GSI
         let result = self.db_client
             .scan()
             .table_name(MAPS_TABLE_NAME)
             .filter_expression("contains(#title_prefix, :target_string)")
             .expression_attribute_names("#title_prefix", "title_prefix")
-            .expression_attribute_values(":target_string", AttributeValue::S(query.to_string()))
+            .expression_attribute_values(":target_string", AttributeValue::S(query.to_lowercase().chars().filter(|c| !c.is_alphabetic()).collect()))
             .send()
             .await?;
         Ok(result.items

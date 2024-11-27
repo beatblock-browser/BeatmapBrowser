@@ -1,6 +1,6 @@
 use crate::api::APIError;
 use crate::util::amazon::{Amazon, USERS_TABLE_NAME};
-use crate::util::database::{AccountLink, User};
+use crate::util::database::{AccountLink, BeatMap, User};
 use anyhow::Error;
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
@@ -35,15 +35,11 @@ where
 }
 
 pub async fn get_user(account_link: AccountLink, amazon: &Amazon) -> Result<User, APIError> {
-    get_or_create_user(
-        account_link.clone(),
-        amazon,
-        move || User {
-            id: Uuid::new_v4(),
-            links: vec![account_link.clone()],
-            ..Default::default()
-        },
-    )
+    get_or_create_user(account_link.clone(), amazon, move || User {
+        id: Uuid::new_v4(),
+        links: vec![account_link.clone()],
+        ..Default::default()
+    })
     .await
 }
 
@@ -52,29 +48,52 @@ pub async fn get_or_create_user<F: Fn() -> User>(
     amazon: &Amazon,
     default_user: F,
 ) -> Result<User, APIError> {
-    if let Some(user) = amazon.query_by_link(account_link)
+    if let Some(user) = amazon
+        .query_by_link(account_link)
         .await
-        .map_err(APIError::database_error)? {
+        .map_err(APIError::database_error)?
+    {
         return Ok(user);
     }
     let user = default_user();
-    amazon.upload(USERS_TABLE_NAME, &user, None::<&Vec<String>>)
+    amazon
+        .upload(USERS_TABLE_NAME, &user, None::<&Vec<String>>)
         .await
         .map_err(APIError::database_error)?;
     Ok(user)
 }
 
-pub fn get_search_combos(input: &String) -> Vec<String> {
-    let mut output = input.chars().take(6).fold(vec![], |mut acc, c| {
-        if acc.is_empty() {
-            acc.push(c.to_string());
-        } else {
-            acc.push(format!("{}{}", acc.last().unwrap(), c));
-        }
-        acc
-    });
-    output.push(input.clone());
+pub fn get_search_combos(song: &BeatMap) -> Vec<String> {
+    let mut output = Vec::new();
+    add_word_combos(&song.song, &mut output);
+    add_word_combos(&song.charter, &mut output);
+    add_word_combos(&song.artist, &mut output);
     output
+}
+
+pub fn add_word_combos(word: &String, output: &mut Vec<String>) {
+    output.extend(
+        word.split(|c: char| !c.is_alphabetic())
+            .filter(|word| !word.is_empty())
+            .take(3)
+            .flat_map(|word| {
+                let mut folded = word
+                    .chars()
+                    .take(10)
+                    .skip(word.len().min(4).max(7) - 4)
+                    .fold(vec![], |mut acc, c| {
+                        if acc.is_empty() {
+                            acc.push(c.to_string());
+                        } else {
+                            acc.push(format!("{}{}", acc.last().unwrap(), c));
+                        }
+                        acc
+                    });
+                folded.push(word.to_string());
+                folded
+            }),
+    );
+    output.push(word.to_string());
 }
 
 pub trait LockResultExt {

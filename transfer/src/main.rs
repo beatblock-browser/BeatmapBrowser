@@ -1,19 +1,23 @@
-use std::collections::HashMap;
-use std::fs;
-use std::str::FromStr;
-use anyhow::Error;
-use surrealdb::sql::Thing;
-use uuid::Uuid;
 use crate::amazon::{setup, MAPS_TABLE_NAME, USERS_TABLE_NAME};
 use crate::surreal::connect;
 use crate::types::{AccountLink, BeatMap, SurrealBeatMap, SurrealUser, User};
+use anyhow::Error;
+use std::collections::HashMap;
+use std::fs;
+use std::str::FromStr;
+use surrealdb::sql::Thing;
+use uuid::Uuid;
 
-mod types;
 mod amazon;
 mod surreal;
+mod types;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Error> {
+    let mut output = vec![];
+    add_word_combos(&"METAL11ONPP".to_string(), &mut output);
+    println!("{:?}", output);
+    return Ok(());
     println!("Setting up");
     let surreal = connect().await?;
     let amazon = setup().await?;
@@ -22,13 +26,22 @@ pub async fn main() -> Result<(), Error> {
     let maps: Vec<SurrealBeatMap> = surreal.select("beatmaps").await?;
     println!("Ready");
     for map in maps {
-        let new_id = map.id.as_ref().unwrap().id.to_string();
-        let new_id = Uuid::from_str(&new_id[3..new_id.len()-3])?;
-        let charter_uid = new_ids.entry(map.charter_uid.as_ref().unwrap().split(":").last().unwrap().to_string())
-            .or_insert(Uuid::new_v4()).clone();
+        let new_id = to_uuid(map.id.as_ref().unwrap());
+        let charter_uid = new_ids
+            .entry(
+                map.charter_uid
+                    .as_ref()
+                    .unwrap()
+                    .split(":")
+                    .last()
+                    .unwrap()
+                    .to_string(),
+            )
+            .or_insert(Uuid::new_v4())
+            .clone();
 
         println!("Uploading {} for {}", new_id, charter_uid);
-        amazon.upload(MAPS_TABLE_NAME, &BeatMap {
+        let mut new_map = BeatMap {
             song: map.song,
             artist: map.artist,
             charter: map.charter,
@@ -41,17 +54,29 @@ pub async fn main() -> Result<(), Error> {
             upload_date: map.upload_date,
             update_date: map.update_date,
             id: new_id.clone(),
-        }).await?;
-        amazon.upload_object(fs::read(map.download)?, format!("{}.zip", new_id.clone()).as_str()).await?;
+            title_prefix: vec![],
+        };
+        new_map.title_prefix = get_search_combos(&new_map);
+        amazon.upload(MAPS_TABLE_NAME, &new_map).await?;
+        amazon
+            .upload_object(
+                fs::read(format!("site/output/{}", map.download))?,
+                format!("{}.zip", new_id.clone()).as_str(),
+            )
+            .await?;
         if let Some(image) = map.image {
-            amazon.upload_object(fs::read(image)?, format!("{}.png", new_id.clone()).as_str()).await?;
+            amazon
+                .upload_object(
+                    fs::read(format!("site/output/{}", image))?,
+                    format!("{}.png", new_id.clone()).as_str(),
+                )
+                .await?;
         }
-        println!("Uploaded {}", map.id.as_ref().unwrap().id);
     }
     let users: Vec<SurrealUser> = surreal.select("users").await?;
     for user in users {
         let new_id = user.id.as_ref().unwrap().id.to_string();
-        let id = new_ids.entry(new_id[3..new_id.len()-3].to_string()).or_insert(Uuid::new_v4()).clone();
+        let id = new_ids.entry(new_id).or_insert(Uuid::new_v4()).clone();
         let mut new_user = User {
             maps: user.maps.iter().map(to_uuid).collect(),
             downloaded: user.downloaded.iter().map(to_uuid).collect(),
@@ -71,6 +96,41 @@ pub async fn main() -> Result<(), Error> {
     Ok(())
 }
 
+pub fn get_search_combos(song: &BeatMap) -> Vec<String> {
+    let mut output = Vec::new();
+    add_word_combos(&song.song, &mut output);
+    add_word_combos(&song.charter, &mut output);
+    add_word_combos(&song.artist, &mut output);
+    output
+}
+
+pub fn add_word_combos(word: &String, output: &mut Vec<String>) {
+    let word = word.to_lowercase();
+    output.extend(
+        word.split(|c: char| !c.is_alphabetic())
+            .filter(|word| !word.is_empty())
+            .take(3)
+            .flat_map(|word| {
+                let mut folded =
+                    word.chars()
+                        .skip(word.len().min(4).max(9) - 4)
+                        .take(10)
+                        .fold(vec![], |mut acc, c| {
+                            if acc.is_empty() {
+                                acc.push(c.to_string());
+                            } else {
+                                acc.push(format!("{}{}", acc.last().unwrap(), c));
+                            }
+                            acc
+                        });
+                folded.push(word.to_string());
+                folded
+            }),
+    );
+    output.push(word.chars().filter(|c| !c.is_alphabetic()).collect());
+}
+
 pub fn to_uuid(thing: &Thing) -> Uuid {
-    Uuid::from_str(thing.id.to_string().as_str()).unwrap()
+    let new_id = thing.id.to_string();
+    Uuid::from_str(&new_id[3..new_id.len() - 3]).unwrap()
 }
