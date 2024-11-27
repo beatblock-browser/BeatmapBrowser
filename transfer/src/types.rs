@@ -47,6 +47,7 @@ pub struct BeatMap {
     pub upload_date: DateTime<Utc>,
     pub update_date: DateTime<Utc>,
     pub id: MapID,
+    pub title_prefix: Vec<String>
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
