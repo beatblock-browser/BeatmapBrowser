@@ -1,41 +1,51 @@
+use std::collections::HashSet;
 use crate::api::APIError;
-use crate::util::amazon::{Amazon, USERS_TABLE_NAME};
+use crate::util::amazon::{setup, USERS_TABLE_NAME};
 use crate::util::database::{AccountLink, BeatMap, User};
-use anyhow::Error;
-use bytes::Bytes;
-use futures::{Stream, StreamExt};
-use std::sync::LockResult;
+use crate::SiteData;
+use std::sync::{Arc, LockResult};
+use firebase_auth::FirebaseAuth;
+use tokio::sync::Mutex;
 use uuid::Uuid;
+use lazy_static::lazy_static;
+use crate::util::ratelimiter::Ratelimiter;
 
 pub mod amazon;
-pub mod body;
 pub mod database;
 pub mod ratelimiter;
+pub mod warp;
+pub mod data;
+pub mod image;
 
-pub async fn collect_stream<S>(mut stream: S, max: usize) -> Result<Vec<u8>, Error>
-where
-    S: Stream<Item = Result<Bytes, hyper::Error>> + Unpin,
-{
-    let mut collected = Vec::with_capacity(max);
-    let mut total = 0;
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        let chunk_len = chunk.len();
-
-        if total + chunk_len > max {
-            return Err(Error::msg("Size limit exceeded"));
-        } else {
-            collected.extend_from_slice(&chunk);
-            total += chunk_len;
-        }
-    }
-
-    Ok(collected)
+static mut DATA: Option<SiteData> = None;
+lazy_static! {
+    static ref DATA_MUTEX: Mutex<()> = Mutex::new(());
 }
 
-pub async fn get_user(account_link: AccountLink, amazon: &Amazon) -> Result<User, APIError> {
-    get_or_create_user(account_link.clone(), amazon, move || User {
+pub async fn data() -> SiteData {
+    unsafe {
+        if DATA.is_none() {
+            let _lock = match DATA_MUTEX.try_lock() {
+                Ok(lock) => lock,
+                Err(_) => {
+                    let _ = DATA_MUTEX.lock().await;
+                    return DATA.clone().unwrap();
+                }
+            };
+
+            DATA = Some(SiteData {
+                auth: FirebaseAuth::new("beatblockbrowser").await,
+                amazon: setup().await.unwrap(),
+                ratelimiter: Arc::new(std::sync::Mutex::new(Ratelimiter::new())),
+            });
+            return DATA.clone().unwrap();
+        }
+        DATA.clone().unwrap()
+    }
+}
+
+pub async fn get_user_from_link(account_link: AccountLink) -> Result<User, APIError> {
+    get_or_create_user(account_link.clone(), move || User {
         id: Uuid::new_v4(),
         links: vec![account_link.clone()],
         ..Default::default()
@@ -45,10 +55,9 @@ pub async fn get_user(account_link: AccountLink, amazon: &Amazon) -> Result<User
 
 pub async fn get_or_create_user<F: Fn() -> User>(
     account_link: AccountLink,
-    amazon: &Amazon,
     default_user: F,
 ) -> Result<User, APIError> {
-    if let Some(user) = amazon
+    if let Some(user) = data().await.amazon
         .query_by_link(account_link)
         .await
         .map_err(APIError::database_error)?
@@ -56,7 +65,7 @@ pub async fn get_or_create_user<F: Fn() -> User>(
         return Ok(user);
     }
     let user = default_user();
-    amazon
+    data().await.amazon
         .upload(USERS_TABLE_NAME, &user, None::<&Vec<String>>)
         .await
         .map_err(APIError::database_error)?;
@@ -64,36 +73,39 @@ pub async fn get_or_create_user<F: Fn() -> User>(
 }
 
 pub fn get_search_combos(song: &BeatMap) -> Vec<String> {
-    let mut output = Vec::new();
+    let mut output = HashSet::new();
     add_word_combos(&song.song, &mut output);
-    add_word_combos(&song.charter, &mut output);
     add_word_combos(&song.artist, &mut output);
-    output
+    output.extend(song.charter.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty())
+        .take(3).map(ToString::to_string));
+    output.into_iter().collect()
 }
 
-pub fn add_word_combos(word: &String, output: &mut Vec<String>) {
+pub fn add_word_combos(word: &String, output: &mut HashSet<String>) {
+    let word = word.to_lowercase();
     output.extend(
-        word.split(|c: char| !c.is_alphabetic())
-            .filter(|word| !word.is_empty())
+        word.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty())
             .take(3)
             .flat_map(|word| {
-                let mut folded = word
-                    .chars()
-                    .take(10)
-                    .skip(word.len().min(4).max(7) - 4)
-                    .fold(vec![], |mut acc, c| {
-                        if acc.is_empty() {
-                            acc.push(c.to_string());
-                        } else {
-                            acc.push(format!("{}{}", acc.last().unwrap(), c));
-                        }
-                        acc
-                    });
+                let mut folded =
+                    word.chars()
+                        .take(10)
+                        .fold(vec![], |mut acc, c| {
+                            if acc.is_empty() {
+                                acc.push(c.to_string());
+                            } else {
+                                acc.push(format!("{}{}", acc.last().unwrap(), c));
+                            }
+                            acc
+                        })
+                        .into_iter()
+                        .skip(word.len().max(4).min(9) - 4)
+                        .collect::<Vec<_>>();
                 folded.push(word.to_string());
                 folded
             }),
     );
-    output.push(word.to_string());
+    output.insert(word.chars().filter(|c| !c.is_alphanumeric()).collect());
 }
 
 pub trait LockResultExt {

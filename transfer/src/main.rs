@@ -2,7 +2,7 @@ use crate::amazon::{setup, MAPS_TABLE_NAME, USERS_TABLE_NAME};
 use crate::surreal::connect;
 use crate::types::{AccountLink, BeatMap, SurrealBeatMap, SurrealUser, User};
 use anyhow::Error;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::str::FromStr;
 use surrealdb::sql::Thing;
@@ -14,11 +14,6 @@ mod types;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Error> {
-    let mut output = vec![];
-    add_word_combos(&"METAL11ONPP".to_string(), &mut output);
-    println!("{:?}", output);
-    return Ok(());
-    println!("Setting up");
     let surreal = connect().await?;
     let amazon = setup().await?;
 
@@ -97,23 +92,21 @@ pub async fn main() -> Result<(), Error> {
 }
 
 pub fn get_search_combos(song: &BeatMap) -> Vec<String> {
-    let mut output = Vec::new();
+    let mut output = HashSet::new();
     add_word_combos(&song.song, &mut output);
     add_word_combos(&song.charter, &mut output);
     add_word_combos(&song.artist, &mut output);
-    output
+    output.into_iter().collect()
 }
 
-pub fn add_word_combos(word: &String, output: &mut Vec<String>) {
+pub fn add_word_combos(word: &String, output: &mut HashSet<String>) {
     let word = word.to_lowercase();
     output.extend(
-        word.split(|c: char| !c.is_alphabetic())
-            .filter(|word| !word.is_empty())
+        word.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty())
             .take(3)
             .flat_map(|word| {
                 let mut folded =
                     word.chars()
-                        .skip(word.len().min(4).max(9) - 4)
                         .take(10)
                         .fold(vec![], |mut acc, c| {
                             if acc.is_empty() {
@@ -122,12 +115,15 @@ pub fn add_word_combos(word: &String, output: &mut Vec<String>) {
                                 acc.push(format!("{}{}", acc.last().unwrap(), c));
                             }
                             acc
-                        });
+                        })
+                        .into_iter()
+                        .skip(word.len().max(4).min(9) - 4)
+                        .collect::<Vec<_>>();
                 folded.push(word.to_string());
                 folded
             }),
     );
-    output.push(word.chars().filter(|c| !c.is_alphabetic()).collect());
+    output.insert(word.chars().filter(|c| !c.is_alphanumeric()).collect());
 }
 
 pub fn to_uuid(thing: &Thing) -> Uuid {

@@ -33,19 +33,6 @@ impl Ratelimiter {
         limit.add_limit(ip, action.get_limit());
         Ok(())
     }
-    
-    pub fn clear(&mut self) {
-        self.limits.clear();
-        for action in ACTIONS {
-            self.limits.insert(
-                action,
-                Limits {
-                    blocked_times: vec![],
-                    searchable_users: Default::default(),
-                },
-            );
-        }
-    }
 }
 
 pub struct Limits {
@@ -91,7 +78,7 @@ pub const ACTIONS: [SiteAction; 5] = [
     SiteAction::Download,
 ];
 
-#[derive(Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Hash, Ord, PartialOrd, Copy, Clone)]
 pub enum SiteAction {
     Search,
     Download,
