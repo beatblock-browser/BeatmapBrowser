@@ -1,6 +1,6 @@
-use crate::amazon::{setup, MAPS_TABLE_NAME, USERS_TABLE_NAME};
+use crate::amazon::{setup, Amazon, MAPS_TABLE_NAME, USERS_TABLE_NAME};
 use crate::surreal::connect;
-use crate::types::{AccountLink, BeatMap, SurrealBeatMap, SurrealUser, User};
+use crate::types::{AccountLink, BeatMap, MapID, SurrealBeatMap, SurrealUser, User};
 use anyhow::Error;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -20,52 +20,15 @@ pub async fn main() -> Result<(), Error> {
     let mut new_ids = HashMap::new();
     let maps: Vec<SurrealBeatMap> = surreal.select("beatmaps").await?;
     println!("Ready");
+    let mut done = 272;
     for map in maps {
-        let new_id = to_uuid(map.id.as_ref().unwrap());
-        let charter_uid = new_ids
-            .entry(
-                map.charter_uid
-                    .as_ref()
-                    .unwrap()
-                    .split(":")
-                    .last()
-                    .unwrap()
-                    .to_string(),
-            )
-            .or_insert(Uuid::new_v4())
-            .clone();
-
-        println!("Uploading {} for {}", new_id, charter_uid);
-        let mut new_map = BeatMap {
-            song: map.song,
-            artist: map.artist,
-            charter: map.charter,
-            charter_uid,
-            difficulties: map.difficulties,
-            description: map.description,
-            artist_list: map.artist_list,
-            image: map.image.is_some(),
-            upvotes: map.upvotes,
-            upload_date: map.upload_date,
-            update_date: map.update_date,
-            id: new_id.clone(),
-            title_prefix: vec![],
-        };
-        new_map.title_prefix = get_search_combos(&new_map);
-        amazon.upload(MAPS_TABLE_NAME, &new_map).await?;
-        amazon
-            .upload_object(
-                fs::read(format!("site/output/{}", map.download))?,
-                format!("{}.zip", new_id.clone()).as_str(),
-            )
-            .await?;
-        if let Some(image) = map.image {
-            amazon
-                .upload_object(
-                    fs::read(format!("site/output/{}", image))?,
-                    format!("{}.png", new_id.clone()).as_str(),
-                )
-                .await?;
+        if done > 0 {
+            done -= 1;
+            continue
+        }
+        let id = map.id.clone();
+        if let Err(error) = upload_map(&amazon, map, &mut new_ids).await {
+            println!("Failed for {}", id.unwrap());
         }
     }
     let users: Vec<SurrealUser> = surreal.select("users").await?;
@@ -87,6 +50,56 @@ pub async fn main() -> Result<(), Error> {
             new_user.links.push(AccountLink::Discord(discord));
         }
         amazon.upload(USERS_TABLE_NAME, &new_user).await?;
+    }
+    Ok(())
+}
+
+pub async fn upload_map(amazon: &Amazon, map: SurrealBeatMap, new_ids: &mut HashMap<String, Uuid>) -> Result<(), Error> {
+    let new_id = to_uuid(map.id.as_ref().unwrap());
+    let charter_uid = new_ids
+        .entry(
+            map.charter_uid
+                .as_ref()
+                .unwrap()
+                .split(":")
+                .last()
+                .unwrap()
+                .to_string(),
+        )
+        .or_insert(Uuid::new_v4())
+        .clone();
+
+    println!("Uploading {} for {}", new_id, charter_uid);
+    let mut new_map = BeatMap {
+        song: map.song,
+        artist: map.artist,
+        charter: map.charter,
+        charter_uid,
+        difficulties: map.difficulties,
+        description: map.description,
+        artist_list: map.artist_list,
+        image: map.image.is_some(),
+        upvotes: map.upvotes,
+        upload_date: map.upload_date,
+        update_date: map.update_date,
+        id: new_id.clone(),
+        title_prefix: vec![],
+    };
+    new_map.title_prefix = get_search_combos(&new_map);
+    amazon.upload(MAPS_TABLE_NAME, &new_map).await?;
+    amazon
+        .upload_object(
+            fs::read(format!("site/output/{}", map.download))?,
+            format!("{}.zip", new_id.clone()).as_str(),
+        )
+        .await?;
+    if let Some(image) = map.image {
+        amazon
+            .upload_object(
+                fs::read(format!("site/output/{}", image))?,
+                format!("{}.png", new_id.clone()).as_str(),
+            )
+            .await?;
     }
     Ok(())
 }
