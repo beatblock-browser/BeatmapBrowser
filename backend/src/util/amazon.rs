@@ -16,6 +16,7 @@ use crate::util::get_search_combos;
 pub const BUCKET_NAME: &'static str = "beatmap-browser";
 pub const MAPS_TABLE_NAME: &'static str = "beatmapbrowser-maps";
 pub const USERS_TABLE_NAME: &'static str = "beatmapbrowser-users";
+pub const TOKENS_TABLE_NAME: &'static str = "beatmapbrowser-tokens";
 pub const BUCKET_REGION: &'static str = "us-east-2";
 
 #[derive(Clone)]
@@ -101,21 +102,29 @@ impl Amazon {
         &self,
         query: &str,
     ) -> Result<Vec<BeatMap>, Error> {
-        println!("Searching {}", query.to_lowercase().chars().filter(|c| !c.is_alphabetic()).collect());
+        let trying = query.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty())
+            .take(3);
+        let mut found: HashMap<String, (BeatMap, u64)> = HashMap::new();
         // Perform a query on the GSI
-        let result = self.db_client
-            .scan()
-            .table_name(MAPS_TABLE_NAME)
-            .filter_expression("contains(#title_prefix, :target_string)")
-            .expression_attribute_names("#title_prefix", "title_prefix")
-            .expression_attribute_values(":target_string", AttributeValue::S(query.to_lowercase().chars().filter(|c| !c.is_alphabetic()).collect()))
-            .send()
-            .await?;
-        Ok(result.items
-               .unwrap_or_default()
-               .into_iter()
-               .filter_map(|item| serde_dynamo::from_item(item).ok())
-               .collect())
+        for possible in trying.clone() {
+            for result in self.db_client
+                .scan()
+                .table_name(MAPS_TABLE_NAME)
+                .filter_expression("contains(#title_prefix, :target_string)")
+                .expression_attribute_names("#title_prefix", "title_prefix")
+                .expression_attribute_values(":target_string", AttributeValue::S(possible.to_lowercase()))
+                .send()
+                .await?
+                .items
+                .unwrap_or_default() {
+                found.entry(result["id"].as_s().map_err(|_| Error::msg("Unexpected ID type"))?.clone())
+                    .or_insert((serde_dynamo::from_item(result)?, 0))
+                    .1 += 1;
+            }
+        }
+        let mut values: Vec<_> = found.into_values().collect();
+        values.sort_by_key(|(map, count)| (*count * 1000000000) + map.upvotes);
+        Ok(values.into_iter().map(|(map, _)| map).collect())
     }
 
     pub async fn query_by_link<T: for<'a> Deserialize<'a>>(

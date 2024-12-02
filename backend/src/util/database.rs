@@ -47,8 +47,3 @@ impl AccountLink {
         }
     }
 }
-
-pub struct UserToken {
-    pub user: UserID,
-    pub token: String
-}

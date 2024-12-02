@@ -3,140 +3,66 @@ mod discord;
 mod parsing;
 mod util;
 
-use crate::api::account_data::account_data;
 use crate::api::delete::delete;
-use crate::api::discord_signin::discord_signin;
 use crate::api::downloaded::{download, remove};
-use crate::api::search::search_database;
+use crate::api::search::search;
+use crate::api::signin::{discord_signin, discord_sync, google_signin, google_sync};
 use crate::api::upload::upload;
 use crate::api::upvote::{unvote, upvote};
 use crate::api::usersongs::usersongs;
-use crate::api::APIError;
 use crate::discord::run_bot;
-use crate::util::body::EitherBody;
-use crate::util::ratelimiter::{Ratelimiter, UniqueIdentifier};
-use anyhow::Error;
+use crate::util::amazon::Amazon;
+use crate::util::database::User;
+use crate::util::ratelimiter::{Ratelimiter, SiteAction};
+use crate::util::warp::{check_ratelimit, extract_identifier, extract_map, handle_auth, handle_error, Replyable};
 use firebase_auth::FirebaseAuth;
-use http_body_util::Full;
-use hyper::body::Bytes;
-use hyper::http::response::Builder;
-use hyper::server::conn::http1;
-use hyper::service::service_fn;
-use hyper::{Method, Request, Response, StatusCode};
-use hyper_staticfile::Static;
-use hyper_util::rt::{TokioIo, TokioTimer};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use tokio::net::TcpListener;
-use crate::util::amazon::{setup, Amazon};
+use warp::path::param;
+use warp::{get, multipart, path, post, Filter};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Starting version {}", env!("CARGO_PKG_VERSION"));
 
-    let addr: SocketAddr = std::env::args().nth(1).unwrap().parse().unwrap();
+    let _site = std::env::args().nth(2).unwrap();
 
-    let data = SiteData {
-        site: Static::new(std::env::args().nth(2).unwrap()),
-        auth: FirebaseAuth::new("beatblockbrowser").await,
-        amazon: setup().await?,
-        ratelimiter: Arc::new(Mutex::new(Ratelimiter::new())),
-    };
+    let _ = tokio::spawn(run_bot());
 
-    let _ = tokio::spawn(run_bot(data.clone()));
+    let limit = |action, in_path: &'static str| path("api").and(path(in_path)).and(check_ratelimit(action)).untuple_one();
+    let limit_param = |action, path| limit(action, path).and(get()).and(param::<String>());
+    let auth = |action, path| limit(action, path).and(post()).and(handle_auth());
+    let auth_map = |action, path| limit(action, path).and(post()).and(extract_map()).untuple_one();
 
-    let listener = TcpListener::bind(addr)
-        .await
-        .expect("Failed to create TCP listener");
-    eprintln!("Server running on http://{}/", addr);
-    loop {
-        match handle_connection(&listener, data.clone()).await {
-            Ok(()) => {}
-            Err(err) => println!("Error serving connection: {err:?}"),
-        }
-    }
-}
-
-async fn handle_request(
-    request: Request<hyper::body::Incoming>,
-    ip: SocketAddr,
-    mut data: SiteData,
-) -> Result<Response<EitherBody>, Error> {
-    let identifier = match ip {
-        SocketAddr::V4(ip) => UniqueIdentifier::Ipv4(ip.ip().clone()),
-        SocketAddr::V6(ip) => UniqueIdentifier::Ipv6(ip.ip().clone()),
-    };
-    let request_path = request.uri().path().to_string();
-    let method = match (request.method(), &*request_path) {
-        (&Method::GET, "/api/search") => search_database(request, identifier, &data).await,
-        (&Method::GET, "/api/usersongs") => usersongs(request, identifier, &data).await,
-        (&Method::GET, "/api/discordauth") => discord_signin(request, identifier, &data).await,
-        (&Method::POST, "/api/upvote") => upvote(request, identifier, &data).await,
-        (&Method::POST, "/api/unvote") => unvote(request, identifier, &data).await,
-        (&Method::POST, "/api/download") => download(request, identifier, &data).await,
-        (&Method::POST, "/api/remove") => remove(request, identifier, &data).await,
-        (&Method::POST, "/api/account_data") => account_data(request, identifier, &data).await,
-        (&Method::POST, "/api/upload") => upload(request, identifier, &mut data).await,
-        (&Method::POST, "/api/delete") => delete(request, identifier, &data).await,
-        _ => {
-            return match data
-                .site
-                .serve(request)
-                .await {
-                Ok(file) => Ok(file.map(|body| body.into())),
-                Err(error) => {
-                    println!("Error serving static file: {error}");
-                    Builder::new().status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(Full::new(Bytes::from("Site is likely overwhelmed, pleaase try again later")).into())
-                        .map_err(Error::new)
-                }
-            };
-        }
-    };
-
-    Ok(match method {
-        Ok(query) => Builder::new()
-            .status(StatusCode::OK)
-            .body(Full::new(Bytes::from(format!("{query}"))).into()),
-        Err(error) => {
-            if let APIError::Ratelimited() = error {} else {
-                println!("Error with {}: {:?}", request_path, error);
-            }
-            build_request((error.get_code(), error.to_string()))
-        }
-    }?)
-}
-
-async fn handle_connection(listener: &TcpListener, data: SiteData) -> Result<(), Error> {
-    let (stream, ip) = listener
-        .accept()
-        .await
-        .expect("Failed to accept TCP connection");
-
-    tokio::spawn(async move {
-        if let Err(err) = http1::Builder::new()
-            .timer(TokioTimer::new())
-            .serve_connection(
-                TokioIo::new(stream),
-                service_fn(move |req| handle_request(req, ip, data.clone())),
-            )
-            .await
-        {
-            eprintln!("Error serving connection: {:?}", err);
-        }
-    });
+    warp::serve(
+        auth(SiteAction::UpvoteList, "account_data")
+            .map(|user: User| user.reply())
+            .or(auth_map(SiteAction::Search, "delete").and_then(delete))
+            .or(auth_map(SiteAction::Download, "download").and_then(download))
+            .or(auth_map(SiteAction::Download, "remove").and_then(remove))
+            .or(limit_param(SiteAction::Search, "search").and_then(search))
+            .or(auth_map(SiteAction::Search, "upvote").and_then(upvote))
+            .or(auth_map(SiteAction::Search, "unvote").and_then(unvote))
+            .or(limit(SiteAction::Search, "upload")
+                .and(post())
+                .and(extract_identifier())
+                .and(multipart::form())
+                .and_then(upload))
+            .or(limit_param(SiteAction::Search, "usersongs").and_then(usersongs))
+            .or(limit_param(SiteAction::UpvoteList, "discordauth").and_then(discord_signin))
+            .or(auth(SiteAction::UpvoteList, "discordsync").and(param()).and_then(discord_sync))
+            .or(limit_param(SiteAction::UpvoteList, "googleauth").and_then(google_signin))
+            .or(auth(SiteAction::UpvoteList, "googlesync").and(param()).and_then(google_sync))
+            .or(warp::fs::dir(std::env::args().nth(2).unwrap()))
+            .recover(handle_error),
+    )
+    .run(std::env::args().nth(1).unwrap().parse::<SocketAddr>().unwrap())
+    .await;
     Ok(())
-}
-
-fn build_request(data: (StatusCode, String)) -> Result<Response<EitherBody>, hyper::http::Error> {
-    Builder::new()
-        .status(data.0)
-        .body(Full::new(Bytes::from(data.1)).into())
 }
 
 #[derive(Clone)]
 pub struct SiteData {
-    site: Static,
     auth: FirebaseAuth,
     amazon: Amazon,
     ratelimiter: Arc<Mutex<Ratelimiter>>,

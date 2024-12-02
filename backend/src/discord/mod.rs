@@ -1,16 +1,14 @@
 mod backlogger;
 
-use crate::api::search::SearchArguments;
 use crate::api::upload::{upload_beatmap, MAX_SIZE};
 use crate::api::upvote::upvote_for_map;
 use crate::api::APIError;
 use crate::discord::backlogger::update_backlog;
 use crate::util::database::AccountLink;
 use crate::util::ratelimiter::UniqueIdentifier;
-use crate::util::{get_user, LockResultExt};
-use crate::SiteData;
+use crate::util::get_user_from_link;
 use anyhow::Error;
-use serenity::all::{CreateMessage, Http, ReactionType, Ready, UserId};
+use serenity::all::{CreateMessage, CreateThread, Http, ReactionType, Ready, UserId};
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
@@ -19,18 +17,22 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
+use urlencoding::encode;
 
 // Real server
+#[cfg(not(debug_assertions))]
 pub const WHITELISTED_GUILDS: [u64; 1] = [1277438162641223740];
+#[cfg(not(debug_assertions))]
 pub const WHITELISTED_CHANNELS: [u64; 1] = [1277438949870276661];
 
-// Testing server
-//pub const WHITELISTED_GUILDS: [u64; 0] = [];
-//pub const WHITELISTED_CHANNELS: [u64; 1] = [1298415906388574279];
+#[cfg(debug_assertions)]
+pub const WHITELISTED_GUILDS: [u64; 0] = [];
+#[cfg(debug_assertions)]
+pub const WHITELISTED_CHANNELS: [u64; 1] = [1298415906388574279];
 
 #[derive(Clone)]
 struct Handler {
-    data: SiteData
+    
 }
 
 #[async_trait]
@@ -106,7 +108,10 @@ impl Handler {
                 Ok(result) => match result {
                     Ok(link) => {
                         found = true;
-                        send_response(&http, &message, &format!("Map uploaded! Try it at https://beatblockbrowser.me/search.html?{link}")).await?;
+                        let channel = CreateThread::new(link.clone()).execute(http, message.channel_id, Some(message.id)).await?;
+                        CreateMessage::new().content(format!("Map uploaded! Try it at https://beatblockbrowser.me/search.html?query={}", encode(&*link)))
+                            .execute(http, channel.id, Some(channel.guild_id)).await?;
+                        
                         if let Err(why) = message.react(&http, ReactionType::Unicode(FixedString::from_static_trunc("✔️"))).await {
                             println!("Error sending message: {why:?}");
                         }
@@ -118,7 +123,9 @@ impl Handler {
                         }*/
                     }
                     Err(err) => {
-                        send_response(&http, &message, &format!("Failed to upload file! Error: {err}")).await?;
+                        let channel = message.author.create_dm_channel(http).await?;
+                        CreateMessage::new().content(format!("Failed to upload beatmap! Error: {err}"))
+                            .execute(http, channel.id, None).await?;
                         println!(
                             "Upload error for {} ({}): {err:?}",
                             message.link(),
@@ -127,7 +134,9 @@ impl Handler {
                     }
                 },
                 Err(_) => {
-                    send_response(&http, &message, "Failed to read the zip file! Please report this for it to sync properly").await?;
+                    let channel = message.author.create_dm_channel(http).await?;
+                    CreateMessage::new().content("Failed to read the zip file! Please report this for it to sync properly")
+                        .execute(http, channel.id, None).await?;
                     println!("Timeout error for {}", message.link());
                 }
             }
@@ -141,25 +150,20 @@ impl Handler {
         user_id: u64,
         upvotes: HashSet<UserId>,
     ) -> Result<String, APIError> {
-        let user = get_user(AccountLink::Discord(user_id), &self.data.amazon).await?;
-        self.data.ratelimiter.lock().ignore_poison().clear();
+        let user = get_user_from_link(AccountLink::Discord(user_id)).await?;
         let map = upload_beatmap(
             file?,
-            &self.data,
             UniqueIdentifier::Discord(user_id),
             user.id,
         )
             .await?;
         if map.upvotes == 0 {
             for user in &upvotes {
-                let user = get_user(AccountLink::Discord(user.get()), &self.data.amazon).await?;
-                upvote_for_map(&map, &user, &self.data).await?;
+                let user = get_user_from_link(AccountLink::Discord(user.get())).await?;
+                upvote_for_map(&map, &user).await?;
             }
         }
-        serde_urlencoded::to_string(&SearchArguments {
-            query: map.song.clone(),
-        })
-            .map_err(|err| APIError::SongNameError(err))
+        Ok(format!("{} {}", map.charter, map.song))
     }
 }
 
@@ -169,13 +173,13 @@ pub async fn send_response(http: &Arc<Http>, message: &Message, error: &str) -> 
         .content(error)).await.map_err(Error::new)
 }
 
-pub async fn run_bot(data: SiteData) {
+pub async fn run_bot() {
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
     // Create a new instance of the Client, logging in as a bot.
     let mut client = Client::builder(Token::from_env("BOT_TOKEN").unwrap(), intents)
-        .event_handler(Handler { data })
+        .event_handler(Handler { })
         .await
         .expect("Error creating client");
 

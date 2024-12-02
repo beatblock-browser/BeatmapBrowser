@@ -1,26 +1,16 @@
-use crate::util::database::{AccountLink, BeatMap, User};
-use crate::util::ratelimiter::{SiteAction, UniqueIdentifier};
-use crate::util::{collect_stream, get_user, LockResultExt};
-use crate::SiteData;
 use anyhow::Error;
-use firebase_auth::FirebaseUser;
-use http_body_util::BodyExt;
-use hyper::body::Incoming;
-use hyper::{Request, StatusCode};
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
 use thiserror::Error;
 use tokio::time::error::Elapsed;
-use crate::util::amazon::MAPS_TABLE_NAME;
+use warp::hyper::StatusCode;
 
-pub mod account_data;
 pub mod delete;
 pub mod downloaded;
 pub mod search;
 pub mod upload;
 pub mod upvote;
 pub mod usersongs;
-pub mod discord_signin;
+pub mod signin;
 
 #[derive(Serialize, Deserialize)]
 pub struct AuthenticatedRequest {
@@ -28,53 +18,10 @@ pub struct AuthenticatedRequest {
     pub firebase_token: String,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct MapRequest {
-    #[serde(rename = "firebaseToken")]
-    pub firebase_token: String,
-    #[serde(rename = "mapId")]
-    pub map_id: String,
-}
-
-async fn get_map_request(
-    request: Request<Incoming>,
-    identifier: UniqueIdentifier,
-    data: &SiteData,
-    action: SiteAction,
-) -> Result<(BeatMap, User), APIError> {
-    data
-        .ratelimiter
-        .lock()
-        .ignore_poison()
-        .check_limited(action, &identifier)?;
-
-    let request_data = collect_stream(request.into_data_stream(), 5000)
-        .await
-        .map_err(|err| APIError::QueryError(err))?;
-    let string = String::from_utf8_lossy(request_data.deref());
-    let arguments = serde_json::from_str::<MapRequest>(string.deref())
-        .map_err(|err| APIError::QueryError(err.into()))?;
-
-    let user: FirebaseUser = data
-        .auth
-        .verify(&arguments.firebase_token)
-        .map_err(|err| APIError::AuthError(err.to_string()))?;
-    let user = get_user(AccountLink::Google(user.user_id), &data.amazon).await?;
-
-    let map = data.amazon.query_one(MAPS_TABLE_NAME, "id", arguments.map_id)
-        .await
-        .map_err(APIError::database_error)?
-            .ok_or(APIError::UnknownMap())?;
-
-    Ok((map, user))
-}
-
 #[derive(Error, Debug)]
 pub enum APIError {
     #[error("Ratelimited")]
     Ratelimited(),
-    #[error("Invalid request")]
-    QueryError(Error),
     #[error("Authentication error")]
     AuthError(String),
     #[error("Database error")]
@@ -85,8 +32,6 @@ pub enum APIError {
     AlreadyUpvoted(),
     #[error("Already downloaded!")]
     AlreadyDownloaded(),
-    #[error("Unknown map!")]
-    UnknownMap(),
     #[error("Expected a multi-part form!")]
     ArgumentError(),
     #[error("Unknown archive type, please submit a zip or rar!")]
@@ -99,8 +44,6 @@ pub enum APIError {
     ZipError(Error),
     #[error("Zip download error")]
     ZipDownloadError(#[from] serenity::Error),
-    #[error("Form error")]
-    FormError(#[from] multer::Error),
     #[error("Invalid song name")]
     SongNameError(#[from] serde_urlencoded::ser::Error),
     #[error("Served timed out reading archive")]
@@ -113,20 +56,17 @@ impl APIError {
     pub fn get_code(&self) -> StatusCode {
         match self {
             APIError::Ratelimited() => StatusCode::TOO_MANY_REQUESTS,
-            APIError::QueryError(_)
-            | APIError::AuthError(_)
+            APIError::AuthError(_)
             | APIError::AlreadyUpvoted()
             | APIError::AlreadyDownloaded()
-            | APIError::UnknownMap()
             | APIError::ArgumentError()
             | APIError::KnownArgumentError(_)
-            | APIError::FormError(_)
             | APIError::SongNameError(_)
             | APIError::ArchiveTypeError()
             | APIError::PermissionError() => StatusCode::BAD_REQUEST,
             APIError::DatabaseError(_)
-            | APIError::SerdeError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            APIError::ZipError(_)
+            | APIError::SerdeError(_)
+            | APIError::ZipError(_)
             | APIError::IOError(_)
             | APIError::TimeoutError(_)
             | APIError::ZipDownloadError(_) => StatusCode::INTERNAL_SERVER_ERROR,
