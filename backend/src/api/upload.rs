@@ -1,36 +1,24 @@
-use std::collections::HashMap;
-use crate::api::search::SearchArguments;
 use crate::api::APIError;
 use crate::parsing::{check_archive, get_parser, parse_archive, BackgroundData};
-use crate::util::database::{BeatMap, User};
-use crate::util::ratelimiter::{Ratelimiter, SiteAction, UniqueIdentifier};
-use crate::util::{get_beatmap_id, get_user, LockResultExt};
-use crate::SiteData;
-use anyhow::Error;
+use crate::util::amazon::{MAPS_TABLE_NAME, USERS_TABLE_NAME};
+use crate::util::database::{BeatMap, UserID};
+use crate::util::image::save_image;
+use crate::util::ratelimiter::{SiteAction, UniqueIdentifier};
+use crate::util::warp::{get_user, Replyable};
+use crate::util::{data, LockResultExt};
+use aws_sdk_dynamodb::types::AttributeValue;
+use bytes::BufMut;
 use chrono::{DateTime, Utc};
-use firebase_auth::FirebaseUser;
-use http_body_util::BodyExt;
-use hyper::body::Incoming;
-use hyper::header::CONTENT_TYPE;
-use hyper::Request;
-use image::{ImageFormat, ImageReader, RgbImage};
-use multer::{Constraints, Field, Multipart, SizeLimit};
+use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io::Cursor;
-use std::ops::DerefMut;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::ops::{Deref, DerefMut};
 use std::time::{Duration, SystemTime};
-use surrealdb::engine::remote::ws::Client;
-use surrealdb::opt::PatchOp;
-use surrealdb::sql::Thing;
-use surrealdb::Surreal;
 use tokio::time::timeout;
 use uuid::Uuid;
+use warp::multipart::FormData;
+use warp::{Rejection, Reply};
 
 pub const MAX_SIZE: u32 = 200000000;
-const SUPPORTED_FORMATS: [ImageFormat; 3] = [ImageFormat::Png, ImageFormat::Jpeg, ImageFormat::Bmp];
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct UploadForm {
@@ -39,273 +27,127 @@ pub struct UploadForm {
     beatmap: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserMapUpdate {
-    maps: Vec<Thing>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserId {
-    id: Thing,
-}
-
-pub async fn upload(
-    request: Request<Incoming>,
-    identifier: UniqueIdentifier,
-    data: &SiteData,
-) -> Result<String, APIError> {
-    if data
-        .ratelimiter
-        .lock()
-        .ignore_poison()
-        .check_limited(SiteAction::Update, &identifier)
-    {
-        return Err(APIError::Ratelimited());
+pub async fn upload(identifier: UniqueIdentifier, form: FormData) -> Result<impl Reply, Rejection> {
+    let form: Vec<(String, Vec<u8>)> = form.and_then(|mut field| async move {
+        let mut buffer = Vec::new();
+        while let Some(data) = field.data().await {
+            buffer.put(data?);
+        }
+        Ok((field.name().to_string(), buffer))
+    })
+        .try_collect()
+        .await.map_err(|_| APIError::ArgumentError())?;
+    
+    let mut beatmap = None;
+    let mut token = None;
+    for (name, data) in form {
+        match name.as_str() {
+            "beatmap" => beatmap = Some(data),
+            "firebaseToken" => token = Some(data),
+            _ => return Err(APIError::ArgumentError().into()),
+        }
     }
-    let form = get_form(request).await?;
-    let user: FirebaseUser = data
-        .auth
-        .verify(&form.firebase_token)
-        .map_err(|err| APIError::AuthError(err.to_string()))?;
-    let id = get_user(true, user.user_id, &data.db).await?;
+    
+    let user = get_user(String::from_utf8_lossy(token.ok_or(APIError::ArgumentError())?.deref()).to_string()).await?;
     let map = timeout(
-        Duration::from_millis(1000),
+        Duration::from_millis(10000),
         upload_beatmap(
-            form.beatmap,
-            &data.db,
-            &data.ratelimiter,
+            beatmap.ok_or(APIError::ArgumentError())?,
             identifier,
-            id.id.unwrap(),
+            user.id,
         ),
     )
-        .await??;
-
-    serde_urlencoded::to_string(&SearchArguments {
-        query: map.song.clone(),
-    })
-        .map_err(|err| APIError::SongNameError(err))
+    .await.map_err(|err| APIError::TimeoutError(err))??;
+    
+    Ok(format!("query={} {}", map.charter, map.song).reply())
 }
 
 pub async fn upload_beatmap(
-    mut beatmap: Vec<u8>,
-    db: &Surreal<Client>,
-    ratelimiter: &Arc<Mutex<Ratelimiter>>,
+    mut beatmap_data: Vec<u8>,
     ip: UniqueIdentifier,
-    charter_id: Thing,
+    charter_id: UserID,
 ) -> Result<BeatMap, APIError> {
-    let mut file_data =
-        parse_archive(get_parser(&mut beatmap)?.deref_mut()).map_err(APIError::ZipError)?;
-    check_archive(&mut beatmap).map_err(APIError::ZipError)?;
-
-    let uuid = Uuid::new_v4();
-    let path = PathBuf::from("site/output");
-
-    let name = file_data.level_data.song_name.clone();
-    let map_data = BeatMap {
-        song: file_data.level_data.song_name,
-        artist: file_data.level_data.artist,
-        charter: file_data.level_data.charter,
-        difficulties: file_data
-            .level_data
-            .difficulty
-            .map_or(file_data.level_data.variants, |diff| vec![diff.into()]),
-        description: file_data.level_data.description,
-        artist_list: file_data.level_data.artist_list,
-        charter_uid: Some(charter_id.to_string()),
-        image: file_data.image.as_ref().map(|_| format!("{}.png", uuid)),
-        download: format!("{}.zip", uuid),
-        upvotes: 0,
-        upload_date: DateTime::from(SystemTime::now()),
-        update_date: DateTime::from(SystemTime::now()),
-        id: None,
-    };
+    let (mut beatmap, image, bg_data) = create_beatmap(&mut beatmap_data, charter_id)?;
 
     // Save the beatmap
-    let mut id;
-    let result = Ok(if let Ok(Some(mut map)) = db
-        .query(format!(
-            "SELECT * FROM beatmaps WHERE charter_uid == '{}' and song == $name",
-            charter_id.to_string()
-        ))
-        .bind(("name", name.clone()))
+    if let Some(map) = data().await
+        .amazon
+        .query(MAPS_TABLE_NAME, "charter_uid", charter_id.to_string())
         .await
         .map_err(APIError::database_error)?
-        .take::<Option<BeatMap>>(0)
+        .into_iter()
+        .filter(|map: &BeatMap| map.song == beatmap.song)
+        .next()
     {
-        id = map.id.as_ref().unwrap().id.to_string();
-        // Fix the weird surrealdb symbols
-        id = id[3..id.len() - 3].to_string();
-
         // Update the old map instead
-        map.upload_date = DateTime::from(SystemTime::now());
-        let Some(map): Option<BeatMap> = db
-            .update(get_beatmap_id(map.id.as_ref().unwrap()))
-            .patch(PatchOp::replace(
-                "update_date",
-                DateTime::<Utc>::from(SystemTime::now()),
-            ))
-            .await
-            .map_err(APIError::database_error)?
-        else {
-            return Err(APIError::UnknownDatabaseError(
-                "Failed to update the map timestamp".to_string(),
-            ));
-        };
-        map
-    } else {
-        if ratelimiter
-            .lock()
-            .ignore_poison()
-            .check_limited(SiteAction::Upload, &ip)
-        {
-            return Err(APIError::Ratelimited());
-        }
-
-        id = uuid.to_string();
-        let map: Thing = ("beatmaps", uuid.to_string().as_str()).into();
-        let Some(_): Option<User> = db
-            .update(("users", charter_id.id.to_string()))
-            .merge(UserMapUpdate {
-                maps: vec![map.clone()],
+        beatmap.id = map.id;
+        data().await.amazon
+            .update(MAPS_TABLE_NAME, beatmap.id.to_string(), |builder| {
+                builder
+                    .update_expression("SET upload_date = :date")
+                    .expression_attribute_values(
+                        ":date",
+                        AttributeValue::S(<DateTime<Utc> as ToString>::to_string(&DateTime::from(
+                            SystemTime::now(),
+                        ))),
+                    )
             })
             .await
-            .map_err(APIError::database_error)?
-        else {
-            return Err(APIError::UnknownDatabaseError(
-                "Failed to update the user's maps".to_string(),
-            ));
-        };
-        let Some(map): Option<BeatMap> = db
-            .create(("beatmaps", uuid.to_string()))
-            .content(map_data)
+            .map_err(APIError::database_error)?;
+    } else {
+        data().await.ratelimiter
+            .lock()
+            .ignore_poison()
+            .check_limited(SiteAction::Upload, &ip)?;
+
+        data().await.amazon
+            .add_to_list(
+                USERS_TABLE_NAME,
+                charter_id.to_string(),
+                "maps",
+                beatmap.id.to_string(),
+            )
+            .await?;
+        data().await.amazon
+            .upload_song(&beatmap)
             .await
-            .map_err(APIError::database_error)?
-        else {
-            return Err(APIError::UnknownDatabaseError(
-                "Failed to create the beatmap".to_string(),
-            ));
-        };
-        map
-    });
+            .map_err(APIError::database_error)?;
+    }
 
-    save_image(&mut file_data.image, &file_data.level_data.bg_data, &path, &id)?;
-    fs::write(path.join(format!("{}.zip", id)), beatmap)?;
-    result
-}
-
-pub fn save_image(data: &mut Option<Vec<u8>>, bg_data: &Option<BackgroundData>, path: &PathBuf, uuid: &str) -> Result<(), APIError> {
-    if let Some(ref image) = data {
-        if image.is_empty() {
-            *data = None;
-        } else {
-            let reader = ImageReader::new(Cursor::new(image)).with_guessed_format()?;
-            if !reader
-                .format()
-                .is_some_and(|format| SUPPORTED_FORMATS.contains(&format))
-            {
-                return Err(APIError::ZipError(Error::msg(
-                    format!("Unknown or unsupported background image format, please use png, bmp or jpeg! {:?}", reader.format()))));
-            }
-            match reader.decode() {
-                Ok(image) => {
-                    let size = (image.width(), image.height());
-                    replace_image_channels(image.to_rgb8(), size, bg_data)
-                        .save_with_format(path.join(format!("{uuid}.png")), ImageFormat::Png)
-                        .map_err(|err| APIError::ZipError(Error::from(err)))?;
-                }
-                Err(err) => {
-                    return Err(APIError::ZipError(Error::from(err)));
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn replace_image_channels(mut img_buffer: RgbImage, size: (u32, u32), bg_data: &Option<BackgroundData>) -> RgbImage {
-    let Some(bg_data) = bg_data else {
-        return img_buffer;
-    };
-    let mut channels: HashMap<[u8; 3], [u8; 3]> = HashMap::new();
-    if let Some(channel) = &bg_data.red_channel {
-        channels.insert([255, 0, 0], channel.into());
-    }
-    if let Some(channel) = &bg_data.green_channel {
-        channels.insert([0, 255, 0], channel.into());
-    }
-    if let Some(channel) = &bg_data.blue_channel {
-        channels.insert([0, 0, 255], channel.into());
-    }
-    if let Some(channel) = &bg_data.magenta_channel {
-        channels.insert([255, 0, 255], channel.into());
-    }
-    if let Some(channel) = &bg_data.cyan_channel {
-        channels.insert([0, 255, 255], channel.into());
-    }
-    if let Some(channel) = &bg_data.yellow_channel {
-        channels.insert([255, 255, 0], channel.into());
-    }
-    channels.insert([255, 255, 255], [255, 255, 255]);
-    let mut i = 0;
-    for pixel in img_buffer.pixels_mut() {
-        if let Some(replacement) = channels.get(&pixel.0) {
-            pixel.0 = *replacement;
-        } else {
-            pixel.0 = if ((i % size.0) % 2 == 0) && (i / size.0) % 2 == 0 {
-                [0, 0, 0]
-            } else {
-                [255, 0, 255]
-            }
-        }
-        i += 1;
-    }
-    img_buffer
-}
-
-pub async fn get_form(request: Request<Incoming>) -> Result<UploadForm, APIError> {
-    let header = request
-        .headers()
-        .get(CONTENT_TYPE)
-        .and_then(|ct| ct.to_str().ok())
-        .and_then(|ct| multer::parse_boundary(ct).ok())
-        .map(|inner| Ok(inner))
-        .unwrap_or(Err(APIError::ArgumentError()))?;
-
-    let mut form = UploadForm::default();
-    let mut multipart = Multipart::with_constraints(
-        request.into_body().into_data_stream(),
-        header,
-        Constraints::new()
-            .allowed_fields(vec!["beatmap", "firebaseToken"])
-            .size_limit(SizeLimit::new().whole_stream(MAX_SIZE as u64 + 5000)),
-    );
-    while let Some(mut field) = multipart
-        .next_field()
+    save_image(&image, &bg_data, &&beatmap.id).await?;
+    data().await.amazon
+        .upload_object(beatmap_data, format!("{}.zip", beatmap.id).as_str())
         .await
-        .map_err(|err| APIError::KnownArgumentError(err.into()))?
-    {
-        if let Some(name) = field.name() {
-            match name {
-                "beatmap" => {
-                    form.beatmap = read_field(&mut field).await?;
-                }
-                "firebaseToken" => {
-                    form.firebase_token = field
-                        .text()
-                        .await
-                        .map_err(|err| APIError::KnownArgumentError(err.into()))?
-                }
-                _ => return Err(APIError::ArgumentError()),
-            }
-        }
-    }
-    Ok(form)
+        .map_err(APIError::database_error)?;
+    Ok(beatmap)
 }
 
-async fn read_field(field: &mut Field<'_>) -> Result<Vec<u8>, APIError> {
-    let mut buf = Vec::new();
-    while let Some(chunk) = field.chunk().await? {
-        buf.extend_from_slice(&chunk);
-    }
-    Ok(buf)
+pub fn create_beatmap(
+    beatmap: &mut Vec<u8>,
+    charter_id: UserID,
+) -> Result<(BeatMap, Option<Vec<u8>>, Option<BackgroundData>), APIError> {
+    let file_data = parse_archive(get_parser(beatmap)?.deref_mut()).map_err(APIError::ZipError)?;
+    check_archive(beatmap).map_err(APIError::ZipError)?;
+
+    Ok((
+        BeatMap {
+            song: file_data.level_data.song_name,
+            artist: file_data.level_data.artist,
+            charter: file_data.level_data.charter,
+            difficulties: file_data
+                .level_data
+                .difficulty
+                .map_or(file_data.level_data.variants, |diff| vec![diff.into()]),
+            description: file_data.level_data.description,
+            artist_list: file_data.level_data.artist_list,
+            charter_uid: charter_id,
+            image: file_data.image.is_some(),
+            upvotes: 0,
+            upload_date: DateTime::from(SystemTime::now()),
+            update_date: DateTime::from(SystemTime::now()),
+            id: Uuid::new_v4(),
+        },
+        file_data.image,
+        file_data.level_data.bg_data,
+    ))
 }

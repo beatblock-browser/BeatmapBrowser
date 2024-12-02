@@ -1,100 +1,111 @@
+use std::collections::HashSet;
 use crate::api::APIError;
-use crate::util::database::User;
-use anyhow::Error;
-use bytes::Bytes;
-use futures::{Stream, StreamExt};
-use std::sync::LockResult;
-use surrealdb::engine::remote::ws::Client;
-use surrealdb::sql::Thing;
-use surrealdb::Surreal;
+use crate::util::amazon::{setup, USERS_TABLE_NAME};
+use crate::util::database::{AccountLink, BeatMap, User};
+use crate::SiteData;
+use std::sync::{Arc, LockResult};
+use firebase_auth::FirebaseAuth;
+use tokio::sync::Mutex;
+use uuid::Uuid;
+use lazy_static::lazy_static;
+use crate::util::ratelimiter::Ratelimiter;
 
-pub mod body;
+pub mod amazon;
 pub mod database;
 pub mod ratelimiter;
+pub mod warp;
+pub mod data;
+pub mod image;
 
-pub async fn collect_stream<S>(mut stream: S, max: usize) -> Result<Vec<u8>, Error>
-where
-    S: Stream<Item = Result<Bytes, hyper::Error>> + Unpin,
-{
-    let mut collected = Vec::with_capacity(max);
-    let mut total = 0;
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        let chunk_len = chunk.len();
-
-        if total + chunk_len > max {
-            return Err(Error::msg("Size limit exceeded"));
-        } else {
-            collected.extend_from_slice(&chunk);
-            total += chunk_len;
-        }
-    }
-
-    Ok(collected)
+static mut DATA: Option<SiteData> = None;
+lazy_static! {
+    static ref DATA_MUTEX: Mutex<()> = Mutex::new(());
 }
 
-pub async fn get_user(google: bool, id: String, db: &Surreal<Client>) -> Result<User, APIError> {
-    let default_user = if google {
-        User {
-            google_id: Some(id.clone()),
-            ..Default::default()
+pub async fn data() -> SiteData {
+    unsafe {
+        if DATA.is_none() {
+            let _lock = match DATA_MUTEX.try_lock() {
+                Ok(lock) => lock,
+                Err(_) => {
+                    let _ = DATA_MUTEX.lock().await;
+                    return DATA.clone().unwrap();
+                }
+            };
+
+            DATA = Some(SiteData {
+                auth: FirebaseAuth::new("beatblockbrowser").await,
+                amazon: setup().await.unwrap(),
+                ratelimiter: Arc::new(std::sync::Mutex::new(Ratelimiter::new())),
+            });
+            return DATA.clone().unwrap();
         }
-    } else {
-        User {
-            discord_id: Some(id.parse().unwrap()),
-            ..Default::default()
-        }
-    };
-    let checking = if google {
-        format!("google_id == '{}'", id)
-    } else {
-        format!("discord_id == {}", id)
-    };
-    get_or_create_user(
-        format!("SELECT * FROM users WHERE {}", checking),
-        db,
-        default_user,
-    )
+        DATA.clone().unwrap()
+    }
+}
+
+pub async fn get_user_from_link(account_link: AccountLink) -> Result<User, APIError> {
+    get_or_create_user(account_link.clone(), move || User {
+        id: Uuid::new_v4(),
+        links: vec![account_link.clone()],
+        ..Default::default()
+    })
     .await
 }
 
-pub async fn get_or_create_user(
-    query: String,
-    db: &Surreal<Client>,
-    default_user: User,
+pub async fn get_or_create_user<F: Fn() -> User>(
+    account_link: AccountLink,
+    default_user: F,
 ) -> Result<User, APIError> {
-    Ok(
-        if let Some(id) = db
-            .query(query)
-            .await
-            .map_err(APIError::database_error)?
-            .take::<Option<User>>(0)
-            .map_err(APIError::database_error)?
-        {
-            id
-        } else {
-            let Some(user): Option<User> = db
-                .create("users")
-                .content(default_user)
-                .await
-                .map_err(APIError::database_error)?
-            else {
-                return Err(APIError::UnknownDatabaseError(
-                    "Failed to create a user in the users database".to_string(),
-                ));
-            };
-            user
-        },
-    )
+    if let Some(user) = data().await.amazon
+        .query_by_link(account_link)
+        .await
+        .map_err(APIError::database_error)?
+    {
+        return Ok(user);
+    }
+    let user = default_user();
+    data().await.amazon
+        .upload(USERS_TABLE_NAME, &user, None::<&Vec<String>>)
+        .await
+        .map_err(APIError::database_error)?;
+    Ok(user)
 }
 
-pub fn get_beatmap_id(thing: &Thing) -> (String, String) {
-    (
-        thing.tb.clone(),
-        thing.id.to_string()[3..thing.id.to_string().len() - 3].to_string(),
-    )
-        .into()
+pub fn get_search_combos(song: &BeatMap) -> Vec<String> {
+    let mut output = HashSet::new();
+    add_word_combos(&song.song, &mut output);
+    add_word_combos(&song.artist, &mut output);
+    output.extend(song.charter.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty())
+        .take(3).map(ToString::to_string));
+    output.into_iter().collect()
+}
+
+pub fn add_word_combos(word: &String, output: &mut HashSet<String>) {
+    let word = word.to_lowercase();
+    output.extend(
+        word.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty())
+            .take(3)
+            .flat_map(|word| {
+                let mut folded =
+                    word.chars()
+                        .take(10)
+                        .fold(vec![], |mut acc, c| {
+                            if acc.is_empty() {
+                                acc.push(c.to_string());
+                            } else {
+                                acc.push(format!("{}{}", acc.last().unwrap(), c));
+                            }
+                            acc
+                        })
+                        .into_iter()
+                        .skip(word.len().max(4).min(9) - 4)
+                        .collect::<Vec<_>>();
+                folded.push(word.to_string());
+                folded
+            }),
+    );
+    output.insert(word.chars().filter(|c| !c.is_alphanumeric()).collect());
 }
 
 pub trait LockResultExt {
