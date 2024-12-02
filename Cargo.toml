@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "backend",
-    "oneclick"
+    "oneclick",
+    "transfer"
 ]
 resolver = "2"
 

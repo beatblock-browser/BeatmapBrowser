@@ -1,54 +1,26 @@
-use crate::api::{get_map_request, APIError};
-use crate::util::database::User;
-use crate::util::ratelimiter::{SiteAction, UniqueIdentifier};
-use crate::SiteData;
-use hyper::body::Incoming;
-use hyper::Request;
-use surrealdb::opt::PatchOp;
-use surrealdb::sql::Thing;
+use warp::{Rejection, Reply};
+use crate::api::APIError;
+use crate::util::amazon::USERS_TABLE_NAME;
+use crate::util::data;
+use crate::util::database::{BeatMap, User};
+use crate::util::warp::Replyable;
 
 pub async fn download(
-    request: Request<Incoming>,
-    identifier: UniqueIdentifier,
-    data: &SiteData,
-) -> Result<String, APIError> {
-    let (map, user, map_id) =
-        get_map_request(request, identifier, data, SiteAction::Download).await?;
-
-    if user.downloaded.contains(map.id.as_ref().unwrap()) {
-        return Err(APIError::AlreadyDownloaded());
+    user: User,
+    map: BeatMap
+) -> Result<impl Reply, Rejection> {
+    if user.downloaded.contains(&map.id) {
+        return Err(APIError::AlreadyDownloaded().into());
     }
-
-    let _: Option<User> = data
-        .db
-        .update(("users", user.id.unwrap().id.to_string()))
-        .patch(PatchOp::add("downloaded", Thing::from(map_id)))
-        .await
-        .map_err(APIError::database_error)?;
-
-    Ok("Ok!".to_string())
+    data().await.amazon.add_to_list(USERS_TABLE_NAME, user.id.to_string(), "downloaded", map.id.to_string()).await?;
+    Ok("Ok".reply())
 }
 
 pub async fn remove(
-    request: Request<Incoming>,
-    identifier: UniqueIdentifier,
-    data: &SiteData,
-) -> Result<String, APIError> {
-    let (map, user, _map_id) =
-        get_map_request(request, identifier, data, SiteAction::Download).await?;
-
-    let _: Option<User> = data
-        .db
-        .update(("users", user.id.unwrap().id.to_string()))
-        .patch(PatchOp::remove(&*format!(
-            "downloaded/{}",
-            user.downloaded
-                .iter()
-                .position(|e| e == map.id.as_ref().unwrap())
-                .ok_or(APIError::AlreadyDownloaded())?
-        )))
-        .await
-        .map_err(APIError::database_error)?;
-
-    Ok("Ok!".to_string())
+    mut user: User,
+    map: BeatMap
+) -> Result<impl Reply, Rejection> {
+    user.downloaded.remove(user.downloaded.iter().position(|elem| elem == &map.id).ok_or(APIError::AlreadyUpvoted())?);
+    data().await.amazon.overwrite_list(USERS_TABLE_NAME, user.id.to_string(), "downloaded", user.downloaded).await?;
+    Ok("Ok".reply())
 }
