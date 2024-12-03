@@ -124,6 +124,7 @@ impl Amazon {
         }
         let mut values: Vec<_> = found.into_values().collect();
         values.sort_by_key(|(map, count)| (*count * 1000000000) + map.upvotes);
+        values.reverse();
         Ok(values.into_iter().map(|(map, _)| map).collect())
     }
 
