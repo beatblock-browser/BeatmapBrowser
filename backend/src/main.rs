@@ -18,14 +18,13 @@ use crate::util::warp::{check_ratelimit, extract_identifier, extract_map, handle
 use firebase_auth::FirebaseAuth;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use anyhow::Error;
 use warp::path::param;
 use warp::{get, multipart, path, post, Filter};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), Error> {
     println!("Starting version {}", env!("CARGO_PKG_VERSION"));
-
-    let _site = std::env::args().nth(2).unwrap();
 
     let _ = tokio::spawn(run_bot());
 

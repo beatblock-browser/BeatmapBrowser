@@ -27,5 +27,6 @@ sleep 5
 
 #nginx &
 
+export RUST_BACKTRACE=1
 exec /usr/local/backend "0.0.0.0:$PORT" /usr/local/site 1>&2
 echo -e "Done!"
