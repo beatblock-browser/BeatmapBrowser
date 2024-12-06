@@ -51,7 +51,7 @@ impl Amazon {
     }
 
     pub async fn update<F: Fn(UpdateItemFluentBuilder) -> UpdateItemFluentBuilder>(&self,
-                        table_name: &'static str, id: String, updater: F) -> Result<(), Error> {
+                                                                                   table_name: &'static str, id: String, updater: F) -> Result<(), Error> {
         updater(self.db_client
             .update_item()
             .table_name(table_name)
@@ -132,20 +132,22 @@ impl Amazon {
         &self,
         link: AccountLink,
     ) -> Result<Option<T>, Error> {
+        let value = AttributeValue::M(
+            HashMap::from([match link {
+                AccountLink::Google(id) =>
+                    ("google".to_string(), AttributeValue::S(id)),
+                AccountLink::Discord(id) =>
+                    ("discord".to_string(), AttributeValue::S(id.to_string()))
+            }]));
         let found = self.db_client
-               .scan()
-               .table_name(USERS_TABLE_NAME)
-               .filter_expression("contains(links, :google_obj)")
-               .expression_attribute_values(
-                   ":google_obj",
-                   AttributeValue::M(
-                       HashMap::from([
-                           ("google".to_string(), AttributeValue::S(link.id()))
-                       ]),
-                   ),
-               )
-               .send()
-               .await?;
+            .scan()
+            .table_name(USERS_TABLE_NAME)
+            .filter_expression("contains(links, :value)")
+            .expression_attribute_values(
+                ":value", value
+            )
+            .send()
+            .await?;
         Ok(found.items.ok_or(Error::msg("No items found"))?
             .into_iter()
             .next()
@@ -157,7 +159,7 @@ impl Amazon {
         &self,
         table: &'static str,
         field: &str,
-        value: String
+        value: String,
     ) -> Result<Option<T>, Error> {
         Ok(self.query(table, field, value).await?.into_iter().next())
     }
@@ -166,7 +168,7 @@ impl Amazon {
         &self,
         table: &'static str,
         field: &str,
-        value: String
+        value: String,
     ) -> Result<Vec<T>, Error> {
         // Perform a query on the GSI
         let result = self.db_client
@@ -188,7 +190,7 @@ impl Amazon {
         &self,
         table: &'static str,
         field: &str,
-        value: String
+        value: String,
     ) -> Result<(), Error> {
         self.db_client
             .delete_item()
@@ -201,11 +203,11 @@ impl Amazon {
 
     pub async fn add_to_list(&self, table: &'static str, id: String, field: &str, adding: String) -> Result<(), APIError> {
         self.update(table, id, |builder| {
-                builder
-                    .update_expression(format!("SET {} = list_append(if_not_exists(upvoted, :empty_list), :new_value)", field))
-                    .expression_attribute_values(":empty_list", AttributeValue::L(vec![])) // Default to an empty list if `upvoted` does not exist
-                    .expression_attribute_values(":new_value", AttributeValue::L(vec![AttributeValue::S(adding.to_string())]))
-            })
+            builder
+                .update_expression(format!("SET {} = list_append(if_not_exists(upvoted, :empty_list), :new_value)", field))
+                .expression_attribute_values(":empty_list", AttributeValue::L(vec![])) // Default to an empty list if `upvoted` does not exist
+                .expression_attribute_values(":new_value", AttributeValue::L(vec![AttributeValue::S(adding.to_string())]))
+        })
             .await.map_err(APIError::database_error)
     }
 
