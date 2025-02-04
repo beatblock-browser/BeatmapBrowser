@@ -16,10 +16,10 @@ pub async fn delete(
     }
     
     user.maps.remove(user.maps.iter().position(|elem| elem == &map.id).ok_or(APIError::AlreadyDownloaded())?);
-    data().await.amazon.remove(MAPS_TABLE_NAME, "id", map.id.to_string()).await
+    data().await.database.remove(MAPS_TABLE_NAME, "id", map.id.to_string()).await
         .map_err(APIError::database_error)?;
-    data().await.amazon.overwrite_list(USERS_TABLE_NAME, user.id.to_string(), "maps", user.maps).await?;
-    data().await.amazon.delete_object(format!("{}.zip", map.id).as_str()).await.map_err(APIError::database_error)?;
-    data().await.amazon.delete_object(format!("{}.png", map.id).as_str()).await.map_err(APIError::database_error)?;
+    data().await.database.overwrite_list(USERS_TABLE_NAME, user.id.to_string(), "maps", user.maps).await?;
+    data().await.database.delete_object(format!("{}.zip", map.id).as_str()).await.map_err(APIError::database_error)?;
+    data().await.database.delete_object(format!("{}.png", map.id).as_str()).await.map_err(APIError::database_error)?;
     Ok("Ok".reply())
 }

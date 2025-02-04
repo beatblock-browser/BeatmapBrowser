@@ -1,13 +1,14 @@
+use crate::api::upvote::unvote_for_map;
 use crate::api::APIError;
-use crate::util::amazon::{MAPS_TABLE_NAME, TOKENS_TABLE_NAME, USERS_TABLE_NAME};
 use crate::util::database::{AccountLink, User, UserID};
+use crate::util::mongo::{MAPS_COLLECTION, TOKENS_COLLECTION, USERS_COLLECTION};
 use crate::util::warp::Replyable;
 use crate::util::{data, get_user_from_link};
 use anyhow::Error;
-use aws_sdk_dynamodb::types::AttributeValue;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use firebase_auth::FirebaseUser;
+use mongodb::bson::doc;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use reqwest::header::HeaderMap;
@@ -15,7 +16,6 @@ use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 use std::env;
 use warp::{Rejection, Reply};
-use crate::api::upvote::unvote_for_map;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DiscordTokenRequest {
@@ -76,35 +76,29 @@ pub async fn merge(mut first: User, second: User) -> Result<(), APIError> {
     for map in second.maps {
         data()
             .await
-            .amazon
-            .update(MAPS_TABLE_NAME, map.to_string(), |update| {
-                update
-                    .update_expression("SET charter_uid = :charter")
-                    .expression_attribute_values(
-                        ":charter",
-                        AttributeValue::S(first.id.to_string()),
-                    )
-            })
+            .database
+            .update(MAPS_COLLECTION, doc!{ "id": map }, doc! { "charter_uid", first.id })
             .await
             .map_err(APIError::database_error)?;
     }
     first.downloaded.extend(second.downloaded);
     for unvoting in first.upvoted.clone().iter().filter(|map| second.upvoted.contains(map)) {
-        let unvoting = data().await.amazon.query_one(MAPS_TABLE_NAME, "id", unvoting.to_string()).await.map_err(APIError::database_error)?
+        let unvoting = data().await.database.query_one(MAPS_COLLECTION, doc! { "id", unvoting })
+            .await.map_err(APIError::database_error)?
             .ok_or(APIError::DatabaseError(Error::msg("Failed to find map while merging!")))?;
         unvote_for_map(&unvoting, &mut first).await?;
     }
     first.upvoted.extend(second.upvoted);
     data()
         .await
-        .amazon
-        .upload(USERS_TABLE_NAME, &first, None::<&Vec<String>>)
+        .database
+        .upload(USERS_COLLECTION, &first)
         .await
         .map_err(APIError::database_error)?;
     data()
         .await
-        .amazon
-        .remove(USERS_TABLE_NAME, "id", second.id.to_string())
+        .database
+        .remove(USERS_COLLECTION, doc! { "id": second.id })
         .await
         .map_err(APIError::database_error)?;
     Ok(())
@@ -161,8 +155,8 @@ pub async fn get_discord_user(code: String) -> Result<DiscordUser, APIError> {
 pub async fn get_token(user: UserID) -> Result<String, Error> {
     if let Some(token) = data()
         .await
-        .amazon
-        .query_one::<UserToken>(TOKENS_TABLE_NAME, "id", user.to_string())
+        .database
+        .query_one::<UserToken>(TOKENS_COLLECTION, doc! { "id": user.to_string() })
         .await?
     {
         return Ok(token.token);
@@ -176,14 +170,13 @@ pub async fn get_token(user: UserID) -> Result<String, Error> {
     let token = BASE64_STANDARD.encode(&buffer);
     data()
         .await
-        .amazon
+        .database
         .upload(
-            TOKENS_TABLE_NAME,
+            TOKENS_COLLECTION,
             &UserToken {
                 id: user,
                 token: token.clone(),
-            },
-            None::<&Vec<String>>,
+            }
         )
         .await?;
     Ok(token)

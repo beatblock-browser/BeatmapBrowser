@@ -19,6 +19,6 @@ pub async fn search(
     let query = decode(query.deref()).map_err(|_| APIError::ArgumentError())?.to_string();
     Ok(SearchResult {
         query: query.clone(),
-        results: data().await.amazon.search_songs(&query).await.map_err(APIError::database_error)?,
+        results: data().await.database.search_songs(&query).await.map_err(APIError::database_error)?,
     }.reply())
 }

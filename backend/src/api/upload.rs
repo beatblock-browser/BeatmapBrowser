@@ -1,12 +1,10 @@
 use crate::api::APIError;
 use crate::parsing::{check_archive, get_parser, parse_archive, BackgroundData};
-use crate::util::amazon::{MAPS_TABLE_NAME, USERS_TABLE_NAME};
 use crate::util::database::{BeatMap, UserID};
 use crate::util::image::save_image;
 use crate::util::ratelimiter::{SiteAction, UniqueIdentifier};
 use crate::util::warp::{get_user, Replyable};
 use crate::util::{data, LockResultExt};
-use aws_sdk_dynamodb::types::AttributeValue;
 use bytes::BufMut;
 use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
@@ -71,7 +69,7 @@ pub async fn upload_beatmap(
 
     // Save the beatmap
     if let Some(map) = data().await
-        .amazon
+        .database
         .query(MAPS_TABLE_NAME, "charter_uid", charter_id.to_string())
         .await
         .map_err(APIError::database_error)?
@@ -81,7 +79,7 @@ pub async fn upload_beatmap(
     {
         // Update the old map instead
         beatmap.id = map.id;
-        data().await.amazon
+        data().await.database
             .update(MAPS_TABLE_NAME, beatmap.id.to_string(), |builder| {
                 builder
                     .update_expression("SET upload_date = :date")
@@ -100,7 +98,7 @@ pub async fn upload_beatmap(
             .ignore_poison()
             .check_limited(SiteAction::Upload, &ip)?;
 
-        data().await.amazon
+        data().await.database
             .add_to_list(
                 USERS_TABLE_NAME,
                 charter_id.to_string(),
@@ -108,14 +106,14 @@ pub async fn upload_beatmap(
                 beatmap.id.to_string(),
             )
             .await?;
-        data().await.amazon
+        data().await.database
             .upload_song(&beatmap)
             .await
             .map_err(APIError::database_error)?;
     }
 
     save_image(&image, &bg_data, &&beatmap.id).await?;
-    data().await.amazon
+    data().await.database
         .upload_object(beatmap_data, format!("{}.zip", beatmap.id).as_str())
         .await
         .map_err(APIError::database_error)?;

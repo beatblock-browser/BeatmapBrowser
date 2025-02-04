@@ -55,18 +55,18 @@ pub fn handle_auth() -> impl Filter<Extract = (User,), Error = Rejection> + Copy
 }
 
 pub async fn get_user(token: String) -> Result<User, APIError> {
-    let user_id: UserToken = data().await.amazon.query_one(TOKENS_TABLE_NAME, "user_token", token)
+    let user_id: UserToken = data().await.database.query_one(TOKENS_TABLE_NAME, "user_token", token)
         .await
         .map_err(APIError::database_error)?
         .ok_or(APIError::AuthError("Invalid token!".to_string()))?;
-    data().await.amazon.query_one(USERS_TABLE_NAME, "id", user_id.id.to_string())
+    data().await.database.query_one(USERS_TABLE_NAME, "id", user_id.id.to_string())
         .await
         .map_err(APIError::database_error)?
         .ok_or(APIError::AuthError("Invalid token!".to_string()))
 }
 
 async fn get_map(id: String) -> Result<BeatMap, APIError> {
-    data().await.amazon.query_one(MAPS_TABLE_NAME, "id", id)
+    data().await.database.query_one(MAPS_TABLE_NAME, "id", id)
         .await
         .map_err(APIError::database_error)?
         .ok_or(APIError::AuthError("Invalid map!".to_string()))

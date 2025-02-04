@@ -64,6 +64,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 #[derive(Clone)]
 pub struct SiteData {
     auth: FirebaseAuth,
-    amazon: Amazon,
+    database: MongoDB,
     ratelimiter: Arc<Mutex<Ratelimiter>>,
 }

@@ -20,12 +20,12 @@ pub struct SongsResult {
 pub async fn usersongs(
     user: String
 ) -> Result<impl Reply, Rejection> {
-    let user: User = data().await.amazon.query_one(USERS_TABLE_NAME, "id", user)
+    let user: User = data().await.database.query_one(USERS_TABLE_NAME, "id", user)
         .await
         .map_err(|err| APIError::DatabaseError(err.into()))?
         .ok_or(APIError::KnownArgumentError(Error::msg("No user with that id")))?;
     
-    let mut maps: Vec<BeatMap> = data().await.amazon.query(MAPS_TABLE_NAME, "charter_uid", user.id.to_string())
+    let mut maps: Vec<BeatMap> = data().await.database.query(MAPS_TABLE_NAME, "charter_uid", user.id.to_string())
         .await
         .map_err(|err| APIError::DatabaseError(err.into()))?;
     maps.sort_by(|first, second| first.upvotes.cmp(&second.upvotes).reverse());

@@ -12,7 +12,7 @@ pub async fn download(
     if user.downloaded.contains(&map.id) {
         return Err(APIError::AlreadyDownloaded().into());
     }
-    data().await.amazon.add_to_list(USERS_TABLE_NAME, user.id.to_string(), "downloaded", map.id.to_string()).await?;
+    data().await.database.add_to_list(USERS_TABLE_NAME, user.id.to_string(), "downloaded", map.id.to_string()).await?;
     Ok("Ok".reply())
 }
 
@@ -21,6 +21,6 @@ pub async fn remove(
     map: BeatMap
 ) -> Result<impl Reply, Rejection> {
     user.downloaded.remove(user.downloaded.iter().position(|elem| elem == &map.id).ok_or(APIError::AlreadyUpvoted())?);
-    data().await.amazon.overwrite_list(USERS_TABLE_NAME, user.id.to_string(), "downloaded", user.downloaded).await?;
+    data().await.database.overwrite_list(USERS_TABLE_NAME, user.id.to_string(), "downloaded", user.downloaded).await?;
     Ok("Ok".reply())
 }

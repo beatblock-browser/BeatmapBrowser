@@ -40,7 +40,7 @@ pub async fn save_image(
     let image = replace_image_channels(image.to_rgb8(), size, bg_data);
     PngEncoder::new(&mut output).write_image(image.as_ref(), size.0, size.1, <Rgb<u8> as PixelWithColorType>::COLOR_TYPE)
         .map_err(|err| APIError::ZipError(err.into()))?;
-    data().await.amazon.upload_object(output, format!("{uuid}.png").as_str()).await
+    data().await.database.upload_object(output, format!("{uuid}.png").as_str()).await
         .map_err(APIError::database_error)?;
     Ok(())
 }
