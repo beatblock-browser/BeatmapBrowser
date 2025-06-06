@@ -2,10 +2,8 @@
 // Change the Rust source code instead and regenerate with typebinder.
 // Rust source module: usersongs
 
-import { UserID, BeatMap } from "@/schema";
-export interface UsersongsRequest {
-	user_id: UserID
-}
+import { UserRequest, BeatMap } from "@/schema";
+export type UsersongsRequest = UserRequest;
 export interface UserpageArguments {
 	user: string
 }

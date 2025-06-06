@@ -9,6 +9,7 @@ use typebinder::macros::context::MacroSolvingContext;
 use typebinder::path_mapper::PathMapper;
 use typebinder::pipeline::Pipeline;
 use typebinder::step_spawner::mod_reader::RustModuleReader;
+use regex::Regex;
 
 pub fn main() -> Result<(), Error> {
     println!("cargo:rerun-if-changed=src/schema");
@@ -21,7 +22,9 @@ pub fn main() -> Result<(), Error> {
 
     // Generate schema types
     let rust_module = fs::canonicalize("src/schema/mod.rs")?;
-    let schema_dir = fs::canonicalize("../site-react/src/schema")?;
+    let schema_dir = "../site-react/src/schema";
+    fs::create_dir_all(schema_dir)?;
+    let schema_dir = fs::canonicalize(schema_dir)?;
 
     // Clean out the schemas
     let _ = fs::remove_dir_all(&schema_dir);
@@ -59,11 +62,19 @@ fn fix_type_paths(path: PathBuf) -> Result<(), Error> {
             fix_type_paths(file?.path())?;
         }
     } else {
-        fs::write(&path, fs::read_to_string(&path)?
-            // Manual remapping of paths. Could be improved to auto-map schema subpaths.
+        let content = fs::read_to_string(&path)?;
+        // Replace all backend::schema and subpaths with @/schema
+        let re = Regex::new(r#"backend::schema([a-zA-Z0-9_:]*)"#)?;
+        let replaced = re.replace_all(&content, |caps: &regex::Captures| {
+            if &caps[1] == "" {
+                "@/schema".to_string()
+            } else {
+                format!("@/schema{}", &caps[1].replace("::", "/"))
+            }
+        });
+        fs::write(&path, replaced
             .replace("from \"uuid\";", "from \"@/lib/env\";")
-            .replace("backend::schema::parsing", "@/schema/parsing")
-            .replace("backend::schema", "@/schema"))?
+        )?;
     }
     Ok(())
 }

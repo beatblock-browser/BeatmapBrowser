@@ -1,13 +1,4 @@
-use serde::{Deserialize, Serialize};
-use crate::schema::BeatMap;
+use crate::schema::{GenericQueryRequest, GenericQueryResult};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SearchRequest {
-    pub query: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SearchResult {
-    pub query: String,
-    pub results: Vec<BeatMap>,
-} 
+pub type SearchRequest = GenericQueryRequest;
+pub type SearchResult = GenericQueryResult;

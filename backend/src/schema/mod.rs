@@ -64,3 +64,25 @@ impl AccountLink {
         }
     }
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GenericQueryRequest {
+    pub query: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GenericQueryResult {
+    pub query: String,
+    pub results: Vec<BeatMap>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserMapRequest {
+    pub user_id: UserID,
+    pub map_id: MapID,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserRequest {
+    pub user_id: UserID,
+}

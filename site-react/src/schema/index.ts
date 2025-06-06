@@ -32,3 +32,17 @@ export type AccountLink = {
 } | {
 	"google": string
 };
+export interface GenericQueryRequest {
+	query: string
+}
+export interface GenericQueryResult {
+	query: string,
+	results: BeatMap[]
+}
+export interface UserMapRequest {
+	user_id: UserID,
+	map_id: MapID
+}
+export interface UserRequest {
+	user_id: UserID
+}

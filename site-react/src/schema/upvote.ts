@@ -2,8 +2,5 @@
 // Change the Rust source code instead and regenerate with typebinder.
 // Rust source module: upvote
 
-import { UserID, MapID } from "@/schema";
-export interface UpvoteRequest {
-	user_id: UserID,
-	map_id: MapID
-}
+import { UserMapRequest } from "@/schema";
+export type UpvoteRequest = UserMapRequest;

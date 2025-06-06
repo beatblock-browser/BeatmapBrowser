@@ -1,7 +1,7 @@
 [package]
 name = "backend"
 version = "2.0.0"
-edition = "2021"
+edition = "2024"
 
 build = "build.rs"
 [dependencies]
@@ -50,3 +50,4 @@ cookie = "0.18"
 [build-dependencies]
 anyhow = "1.0.89"
 typebinder = { git = "https://github.com/impero-com/typebinder" }
+regex = "1"
