@@ -4,12 +4,12 @@ use anyhow::Error;
 use futures::TryStreamExt;
 use mongodb::bson::{doc, Document};
 use mongodb::Client;
+use mongodb::options::FindOptions;
 use serde::{Deserialize, Serialize};
 
 pub const DATABASE: &'static str = "beatmapbrowser";
 pub const MAPS_COLLECTION: &'static str = "maps";
 pub const USERS_COLLECTION: &'static str = "users";
-pub const TOKENS_COLLECTION: &'static str = "tokens";
 
 #[derive(Clone)]
 pub struct MongoDB {
@@ -40,14 +40,19 @@ impl MongoDB {
         &self,
         query: &str,
     ) -> Result<Vec<BeatMap>, Error> {
-        let mut cursor = self.client.database(DATABASE).collection(MAPS_COLLECTION).find(doc! {
+        let mut cursor = if query.is_empty() {
+            self.client.database(DATABASE).collection(MAPS_COLLECTION).find(doc! {}).await?
+        } else {
+            self.client.database(DATABASE).collection(MAPS_COLLECTION).find(doc! {
             "$text": {
                 "$search": query,
             },
             "song" : 1,
             "mapper" : 1,
             "artist": 1
-        }).await?;
+        }).await?
+        };
+
         let mut results = Vec::new();
         while let Some(map) = cursor.try_next().await? {
             results.push(map);
@@ -91,7 +96,7 @@ impl MongoDB {
     pub async fn remove(
         &self,
         collection: &'static str,
-        document: Document
+        document: Document,
     ) -> Result<(), Error> {
         self.client.database(DATABASE).collection::<Document>(collection)
             .delete_one(document).await?;
