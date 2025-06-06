@@ -1,19 +1,20 @@
+use actix_web::{post, Responder};
 use mongodb::bson::doc;
 use crate::api::APIError;
 use crate::schema::{BeatMap, User};
-use warp::{Rejection, Reply};
 use crate::util::data;
 use crate::util::mongo::{MAPS_COLLECTION, USERS_COLLECTION};
 use crate::util::warp::Replyable;
 use crate::schema::upvote::UpvoteRequest;
 
+#[post("/api/upvote")]
 pub async fn upvote(
     _req: UpvoteRequest,
     user: User,
     map: BeatMap,
-) -> Result<impl Reply, Rejection> {
+) -> impl Responder {
     upvote_for_map(&map, &user).await?;
-    Ok("Ok".reply())
+    Ok("Ok")
 }
 
 pub async fn upvote_for_map(map: &BeatMap, user: &User) -> Result<(), APIError> {
@@ -37,13 +38,14 @@ pub async fn upvote_for_map(map: &BeatMap, user: &User) -> Result<(), APIError> 
     Ok(())
 }
 
+#[post("/api/unvote")]
 pub async fn unvote(
     _req: UpvoteRequest,
     mut user: User,
     map: BeatMap,
-) -> Result<impl Reply, Rejection> {
+) -> impl Responder {
     unvote_for_map(&map, &mut user).await?;
-    Ok("Ok".reply())
+    Ok("Ok")
 }
 
 pub async fn unvote_for_map(map: &BeatMap, user: &mut User) -> Result<(), APIError> {

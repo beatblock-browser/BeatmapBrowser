@@ -1,4 +1,3 @@
-use crate::api::upload::MAX_SIZE;
 use crate::api::APIError;
 use crate::parsing::rar::RarArchiveReader;
 use crate::parsing::zip::ZipArchiveReader;
@@ -8,6 +7,8 @@ use anyhow::Error;
 use std::io::{Cursor, Read, Write};
 use std::path::{Component, PathBuf};
 use crate::schema::parsing::{LevelData, LevelMetadata};
+
+pub const MAX_SIZE: u32 = 200000000;
 
 pub mod rar;
 pub mod zip;

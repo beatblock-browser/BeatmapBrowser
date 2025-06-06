@@ -6,19 +6,17 @@ edition = "2024"
 build = "build.rs"
 [dependencies]
 # Web traffic
-warp = "0.3"
-urlencoding = "2.1.3"
+actix-web = "4.10.2"
+actix-governor = "0.8.0"
+actix-files = "0.6.6"
+jsonwebtoken = "9.3.1"
 
 tokio = { version = "1.40.0", features = ["full"] }
-reqwest = "0.12.9"
 
 # Util
 futures = "0.3.31"
 linked_hash_set = "0.1.4"
 bytes = "1.8.0"
-lazy_static = "1.5.0"
-rand = "0.8.5"
-base64 = "0.22.1"
 
 # Error handling
 thiserror = "1.0.63"
@@ -42,12 +40,10 @@ chrono = { version = "0.4.38", features = ["serde"] }
 
 # Discord
 serenity = { git = "https://github.com/Serenity-rs/serenity", branch = "next" }
-
-# JWT and cookie handling
-jsonwebtoken = "8.3"
-cookie = "0.18"
+env_logger = "0.11.7"
+log = "0.4.22"
 
 [build-dependencies]
 anyhow = "1.0.89"
 typebinder = { git = "https://github.com/impero-com/typebinder" }
-regex = "1"
+regex = "1.11.1"

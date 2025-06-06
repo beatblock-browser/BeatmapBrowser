@@ -10,18 +10,16 @@ use bytes::BufMut;
 use chrono::DateTime;
 use futures::TryStreamExt;
 use uuid::Uuid;
-use warp::multipart::FormData;
-use warp::{Rejection, Reply};
 use crate::util::mongo::{MAPS_COLLECTION, USERS_COLLECTION};
 use mongodb::bson;
 use std::ops::{Deref, DerefMut};
 use std::time::{Duration, SystemTime};
+use actix_web::{post, Responder};
 use tokio::time::timeout;
 use mongodb::bson::doc;
 
-pub const MAX_SIZE: u32 = 200000000;
-
-pub async fn upload(identifier: UniqueIdentifier, form: FormData) -> Result<impl Reply, Rejection> {
+#[post("/api/upload")]
+pub async fn upload(identifier: UniqueIdentifier, form: FormData) -> impl Responder {
     let form: Vec<(String, Vec<u8>)> = form.and_then(|mut field| async move {
         let mut buffer = Vec::new();
         while let Some(data) = field.data().await {
@@ -53,7 +51,7 @@ pub async fn upload(identifier: UniqueIdentifier, form: FormData) -> Result<impl
     )
     .await.map_err(|err| APIError::TimeoutError(err))??;
     
-    Ok(format!("query={} {}", map.charter, map.song).reply())
+    Ok(format!("query={} {}", map.charter, map.song))
 }
 
 pub async fn upload_beatmap(

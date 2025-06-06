@@ -14,7 +14,7 @@ pub async fn save_image(
     bg_data: &Option<BackgroundData>,
     _uuid: &MapID,
 ) -> Result<(), APIError> {
-    let Some(ref image) = image else {
+    let Some(image) = image else {
         return Ok(());
     };
     if image.is_empty() {

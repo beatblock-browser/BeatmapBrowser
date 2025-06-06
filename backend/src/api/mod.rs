@@ -1,15 +1,17 @@
+use actix_web::http::StatusCode;
+use actix_web::{HttpResponse, ResponseError};
 use anyhow::Error;
 use thiserror::Error;
 use tokio::time::error::Elapsed;
-use warp::hyper::StatusCode;
+use log::error;
 
-pub mod delete;
-pub mod downloaded;
+//pub mod delete;
+//pub mod downloaded;
 pub mod search;
-pub mod upload;
-pub mod upvote;
-pub mod usersongs;
-pub mod signin;
+//pub mod upload;
+//pub mod upvote;
+//pub mod usersongs;
+//pub mod signin;
 
 #[derive(Error, Debug)]
 pub enum APIError {
@@ -42,7 +44,7 @@ pub enum APIError {
     #[error("Served timed out reading archive")]
     TimeoutError(#[from] Elapsed),
     #[error("You do not have permission to perform this action")]
-    PermissionError()
+    PermissionError(),
 }
 
 impl APIError {
@@ -68,5 +70,16 @@ impl APIError {
 
     pub fn database_error<E: Into<Error>>(error: E) -> APIError {
         APIError::DatabaseError(error.into())
+    }
+}
+
+impl ResponseError for APIError {
+    fn status_code(&self) -> StatusCode {
+        self.get_code()
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        error!("Error: {self:?}");
+        HttpResponse::with_body(self.status_code(), self.to_string()).map_into_boxed_body()
     }
 }

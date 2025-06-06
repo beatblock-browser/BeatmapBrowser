@@ -12,9 +12,10 @@ use reqwest::header::HeaderMap;
 use reqwest::{Client, Response};
 use serde::Deserialize;
 use std::env;
-use warp::{Rejection, Reply};
+use actix_web::{post, Responder};
 
-pub async fn discord_signin(code: String) -> Result<impl Reply, Rejection> {
+#[post("/api/discordauth")]
+pub async fn discord_signin(code: String) -> impl Responder {
     let account = get_user_from_link(AccountLink::Discord(
         get_discord_user(code).await?.id.parse().unwrap(),
     ))
@@ -22,16 +23,18 @@ pub async fn discord_signin(code: String) -> Result<impl Reply, Rejection> {
     create_jwt_response(account)
 }
 
-pub async fn discord_sync(user: User, code: String) -> Result<impl Reply, Rejection> {
+#[post("/api/discordsync")]
+pub async fn discord_sync(user: User, code: String) -> impl Responder {
     let other = get_user_from_link(AccountLink::Discord(
         get_discord_user(code).await?.id.parse().unwrap(),
     ))
     .await?;
     merge(user, other).await?;
-    Ok("Ok".reply())
+    Ok("Ok")
 }
 
-pub async fn google_signin(code: String) -> Result<impl Reply, Rejection> {
+#[post("/api/googleauth")]
+pub async fn google_signin(code: String) -> impl Responder {
     let user: FirebaseUser = data()
         .await
         .auth
@@ -41,7 +44,8 @@ pub async fn google_signin(code: String) -> Result<impl Reply, Rejection> {
     create_jwt_response(account)
 }
 
-pub async fn google_sync(user: User, code: String) -> Result<impl Reply, Rejection> {
+#[post("/api/googlesync")]
+pub async fn google_sync(user: User, code: String) -> impl Responder {
     let firebase_user: FirebaseUser = data()
         .await
         .auth
@@ -49,7 +53,7 @@ pub async fn google_sync(user: User, code: String) -> Result<impl Reply, Rejecti
         .map_err(|err| APIError::AuthError(anyhow!(err.to_string())))?;
     let other = get_user_from_link(AccountLink::Google(firebase_user.user_id)).await?;
     merge(user, other).await?;
-    Ok("Ok".reply())
+    Ok("Ok")
 }
 
 pub async fn merge(mut first: User, second: User) -> Result<(), APIError> {

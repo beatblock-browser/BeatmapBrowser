@@ -1,5 +1,4 @@
-use crate::api::upload::MAX_SIZE;
-use crate::parsing::ArchiveParser;
+use crate::parsing::{ArchiveParser, MAX_SIZE};
 use anyhow::{Context, Error};
 use std::env::temp_dir;
 use std::io::{Cursor, Write};

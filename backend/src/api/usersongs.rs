@@ -10,7 +10,7 @@ use warp::{Rejection, Reply};
 
 pub async fn usersongs(
     req: UsersongsRequest
-) -> Result<impl Reply, Rejection> {
+) -> impl Responder {
     let user: User = data().await.database.query_one(USERS_COLLECTION, doc! { "id": req.user_id.to_string() })
         .await
         .map_err(|err| APIError::DatabaseError(err.into()))?
@@ -22,5 +22,5 @@ pub async fn usersongs(
     maps.sort_by(|first, second| first.upvotes.cmp(&second.upvotes).reverse());
     Ok(SongsResult {
         results: maps,
-    }.reply())
+    })
 }
