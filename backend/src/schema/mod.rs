@@ -1,7 +1,17 @@
-use crate::parsing::LevelVariant;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use crate::schema::parsing::LevelVariant;
+
+pub mod upload;
+pub mod signin;
+pub mod usersongs;
+pub mod search;
+pub mod auth;
+pub mod delete;
+pub mod upvote;
+pub mod downloaded;
+pub mod parsing;
 
 pub type UserID = Uuid;
 pub type MapID = Uuid;
@@ -40,6 +50,13 @@ pub enum AccountLink {
 }
 
 impl AccountLink {
+    pub fn name(&self) -> String {
+        match self {
+            AccountLink::Discord(_) => "discord".to_string(),
+            AccountLink::Google(_) => "google".to_string()
+        }
+    }
+
     pub fn id(&self) -> String {
         match self {
             AccountLink::Discord(id) => id.to_string(),

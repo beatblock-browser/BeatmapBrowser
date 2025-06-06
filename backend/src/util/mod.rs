@@ -1,6 +1,5 @@
 use crate::api::APIError;
-use crate::util::database::{AccountLink, User};
-use crate::util::mongo::{MongoDB, USERS_COLLECTION};
+use crate::util::mongo::MongoDB;
 use crate::util::ratelimiter::Ratelimiter;
 use crate::SiteData;
 use firebase_auth::FirebaseAuth;
@@ -8,8 +7,9 @@ use lazy_static::lazy_static;
 use std::sync::{Arc, LockResult};
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use crate::schema::{AccountLink, User};
 
-pub mod database;
+pub mod auth;
 pub mod ratelimiter;
 pub mod warp;
 pub mod data;
@@ -56,19 +56,11 @@ pub async fn get_or_create_user<F: Fn() -> User>(
     account_link: AccountLink,
     default_user: F,
 ) -> Result<User, APIError> {
-    if let Some(user) = data().await.database
+    let user_opt = data().await.database
         .query_by_link(account_link)
         .await
-        .map_err(APIError::database_error)?
-    {
-        return Ok(user);
-    }
-    let user = default_user();
-    data().await.database
-        .upload(USERS_COLLECTION, &user)
-        .await
         .map_err(APIError::database_error)?;
-    Ok(user)
+    Ok(user_opt.unwrap_or_else(default_user))
 }
 
 pub trait LockResultExt {

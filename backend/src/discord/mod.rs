@@ -4,7 +4,7 @@ use crate::api::upload::{upload_beatmap, MAX_SIZE};
 use crate::api::upvote::upvote_for_map;
 use crate::api::APIError;
 use crate::discord::backlogger::update_backlog;
-use crate::util::database::AccountLink;
+use crate::schema::AccountLink;
 use crate::util::ratelimiter::UniqueIdentifier;
 use crate::util::get_user_from_link;
 use anyhow::Error;
@@ -173,12 +173,12 @@ pub async fn send_response(http: &Arc<Http>, message: &Message, error: &str) -> 
         .content(error)).await.map_err(Error::new)
 }
 
-pub async fn run_bot() {
+pub async fn run_bot() -> Result<(), Error> {
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
     // Create a new instance of the Client, logging in as a bot.
-    let mut client = Client::builder(Token::from_env("BOT_TOKEN").unwrap(), intents)
+    let mut client = Client::builder(Token::from_env("BOT_TOKEN")?, intents)
         .event_handler(Handler { })
         .await
         .expect("Error creating client");
@@ -187,4 +187,6 @@ pub async fn run_bot() {
     if let Err(why) = client.start().await {
         println!("Client error: {why:?}");
     }
+
+    Ok(())
 }

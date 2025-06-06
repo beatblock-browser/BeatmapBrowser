@@ -1,42 +1,25 @@
 use crate::api::upvote::unvote_for_map;
 use crate::api::APIError;
-use crate::util::database::{AccountLink, User, UserID};
-use crate::util::mongo::{MAPS_COLLECTION, TOKENS_COLLECTION, USERS_COLLECTION};
-use crate::util::warp::Replyable;
+use crate::schema::signin::{DiscordTokenRequest, DiscordUser};
+use crate::schema::{AccountLink, User};
+use crate::util::mongo::{MAPS_COLLECTION, USERS_COLLECTION};
+use crate::util::warp::{create_jwt_response, Replyable};
 use crate::util::{data, get_user_from_link};
-use anyhow::Error;
-use base64::prelude::BASE64_STANDARD;
-use base64::Engine;
+use anyhow::{anyhow, Error};
 use firebase_auth::FirebaseUser;
 use mongodb::bson::doc;
-use rand::rngs::OsRng;
-use rand::RngCore;
 use reqwest::header::HeaderMap;
 use reqwest::{Client, Response};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::env;
 use warp::{Rejection, Reply};
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct DiscordTokenRequest {
-    pub access_token: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct DiscordUser {
-    pub id: String,
-    pub username: String,
-    pub discriminator: String,
-    pub global_name: String,
-    pub verified: bool,
-}
 
 pub async fn discord_signin(code: String) -> Result<impl Reply, Rejection> {
     let account = get_user_from_link(AccountLink::Discord(
         get_discord_user(code).await?.id.parse().unwrap(),
     ))
     .await?;
-    Ok(account.id.to_string().reply())
+    create_jwt_response(account)
 }
 
 pub async fn discord_sync(user: User, code: String) -> Result<impl Reply, Rejection> {
@@ -53,12 +36,9 @@ pub async fn google_signin(code: String) -> Result<impl Reply, Rejection> {
         .await
         .auth
         .verify(&code)
-        .map_err(|err| APIError::AuthError(err.to_string()))?;
+        .map_err(|err| APIError::AuthError(anyhow!(err.to_string())))?;
     let account = get_user_from_link(AccountLink::Google(user.user_id)).await?;
-    Ok(get_token(account.id)
-        .await
-        .map_err(APIError::database_error)?
-        .reply())
+    create_jwt_response(account)
 }
 
 pub async fn google_sync(user: User, code: String) -> Result<impl Reply, Rejection> {
@@ -66,7 +46,7 @@ pub async fn google_sync(user: User, code: String) -> Result<impl Reply, Rejecti
         .await
         .auth
         .verify(&code)
-        .map_err(|err| APIError::AuthError(err.to_string()))?;
+        .map_err(|err| APIError::AuthError(anyhow!(err.to_string())))?;
     let other = get_user_from_link(AccountLink::Google(firebase_user.user_id)).await?;
     merge(user, other).await?;
     Ok("Ok".reply())
@@ -77,13 +57,13 @@ pub async fn merge(mut first: User, second: User) -> Result<(), APIError> {
         data()
             .await
             .database
-            .update(MAPS_COLLECTION, doc!{ "id": map }, doc! { "charter_uid", first.id })
+            .update(MAPS_COLLECTION, doc!{ "id": map.to_string() }, doc! { "charter_uid": first.id.to_string() })
             .await
             .map_err(APIError::database_error)?;
     }
     first.downloaded.extend(second.downloaded);
     for unvoting in first.upvoted.clone().iter().filter(|map| second.upvoted.contains(map)) {
-        let unvoting = data().await.database.query_one(MAPS_COLLECTION, doc! { "id", unvoting })
+        let unvoting = data().await.database.query_one(MAPS_COLLECTION, doc! { "id": unvoting.to_string() })
             .await.map_err(APIError::database_error)?
             .ok_or(APIError::DatabaseError(Error::msg("Failed to find map while merging!")))?;
         unvote_for_map(&unvoting, &mut first).await?;
@@ -98,7 +78,7 @@ pub async fn merge(mut first: User, second: User) -> Result<(), APIError> {
     data()
         .await
         .database
-        .remove(USERS_COLLECTION, doc! { "id": second.id })
+        .remove(USERS_COLLECTION, doc! { "id": second.id.to_string() })
         .await
         .map_err(APIError::database_error)?;
     Ok(())
@@ -147,54 +127,14 @@ pub async fn get_discord_user(code: String) -> Result<DiscordUser, APIError> {
         .map_err(APIError::database_error)?;
     let user: DiscordUser = get_response(user).await?;
     if !user.verified {
-        return Err(APIError::AuthError("Your account's email isn't verified.".to_string()).into());
+        return Err(APIError::AuthError(anyhow!("Your account's email isn't verified.")).into());
     }
     Ok(user)
-}
-
-pub async fn get_token(user: UserID) -> Result<String, Error> {
-    if let Some(token) = data()
-        .await
-        .database
-        .query_one::<UserToken>(TOKENS_COLLECTION, doc! { "id": user.to_string() })
-        .await?
-    {
-        return Ok(token.token);
-    }
-
-    let mut rng = OsRng; // Uses the operating system's randomness
-    let mut buffer = [0u8; 32]; // 32 bytes = 256 bits
-    rng.fill_bytes(&mut buffer);
-
-    // Encode the random bytes as a Base64 string
-    let token = BASE64_STANDARD.encode(&buffer);
-    data()
-        .await
-        .database
-        .upload(
-            TOKENS_COLLECTION,
-            &UserToken {
-                id: user,
-                token: token.clone(),
-            }
-        )
-        .await?;
-    Ok(token)
 }
 
 async fn get_response<T: for<'a> Deserialize<'a>>(response: Response) -> Result<T, APIError> {
     let bytes = response.bytes().await.map_err(APIError::database_error)?;
     let string = String::from_utf8_lossy(&bytes).into_owned();
-    let deserialized = serde_json::from_str(&string).map_err(|e| {
-        println!("{}", string);
-        APIError::database_error(e)
-    })?;
+    let deserialized = serde_json::from_str(&string).map_err(APIError::database_error)?;
     Ok(deserialized)
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserToken {
-    pub id: UserID,
-    #[serde(rename = "user_token")]
-    token: String,
 }

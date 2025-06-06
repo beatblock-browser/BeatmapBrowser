@@ -1,5 +1,4 @@
 use anyhow::Error;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::time::error::Elapsed;
 use warp::hyper::StatusCode;
@@ -12,18 +11,12 @@ pub mod upvote;
 pub mod usersongs;
 pub mod signin;
 
-#[derive(Serialize, Deserialize)]
-pub struct AuthenticatedRequest {
-    #[serde(rename = "firebaseToken")]
-    pub firebase_token: String,
-}
-
 #[derive(Error, Debug)]
 pub enum APIError {
     #[error("Ratelimited")]
     Ratelimited(),
     #[error("Authentication error")]
-    AuthError(String),
+    AuthError(Error),
     #[error("Database error")]
     DatabaseError(Error),
     #[error("Deserialization error")]

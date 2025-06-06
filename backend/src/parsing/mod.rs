@@ -5,9 +5,9 @@ use crate::parsing::zip::ZipArchiveReader;
 use ::zip::write::SimpleFileOptions;
 use ::zip::{ZipArchive, ZipWriter};
 use anyhow::Error;
-use serde::{Deserialize, Serialize};
 use std::io::{Cursor, Read, Write};
 use std::path::{Component, PathBuf};
+use crate::schema::parsing::{LevelData, LevelMetadata};
 
 pub mod rar;
 pub mod zip;
@@ -17,78 +17,7 @@ pub struct FileData {
     pub image: Option<Vec<u8>>,
 }
 
-#[derive(Deserialize)]
-pub struct LevelData {
-    pub metadata: LevelMetadata,
-}
-
-#[derive(Deserialize)]
-pub struct LevelMetadata {
-    pub artist: String,
-    pub charter: String,
-    pub difficulty: Option<f64>,
-    pub description: String,
-    #[serde(rename = "songName")]
-    pub song_name: String,
-    #[serde(rename = "artistList")]
-    #[serde(default)]
-    pub artist_list: String,
-    #[serde(rename = "bgData")]
-    #[serde(default)]
-    pub bg_data: Option<BackgroundData>,
-    #[serde(default)]
-    pub variants: Vec<LevelVariant>,
-}
-
-#[derive(Deserialize)]
-pub struct BackgroundData {
-    image: String,
-    #[serde(rename = "cyanChannel")]
-    pub cyan_channel: Option<ColorChannel>,
-    #[serde(rename = "magentaChannel")]
-    pub magenta_channel: Option<ColorChannel>,
-    #[serde(rename = "yellowChannel")]
-    pub yellow_channel: Option<ColorChannel>,
-    #[serde(rename = "redChannel")]
-    pub red_channel: Option<ColorChannel>,
-    #[serde(rename = "greenChannel")]
-    pub green_channel: Option<ColorChannel>,
-    #[serde(rename = "blueChannel")]
-    pub blue_channel: Option<ColorChannel>,
-}
-
-#[derive(Deserialize)]
-pub struct ColorChannel {
-    #[serde(rename = "r")]
-    red: u8,
-    #[serde(rename = "g")]
-    green: u8,
-    #[serde(rename = "b")]
-    blue: u8
-}
-
-impl Into<[u8; 3]> for &ColorChannel {
-    fn into(self) -> [u8; 3] {
-        [self.red, self.green, self.blue]
-    }
-}
-
-#[derive(Default, Debug, Serialize, Deserialize)]
-pub struct LevelVariant {
-    display: String,
-    difficulty: f64,
-}
-
-impl Into<LevelVariant> for f64 {
-    fn into(self) -> LevelVariant {
-        LevelVariant {
-            display: get_difficulty(self),
-            difficulty: self,
-        }
-    }
-}
-
-fn get_difficulty(difficulty: f64) -> String {
+pub fn get_difficulty(difficulty: f64) -> String {
     match difficulty {
         ..=0.0 => "Special",
         ..=5.0 => "Easy",

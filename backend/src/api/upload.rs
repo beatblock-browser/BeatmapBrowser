@@ -1,29 +1,25 @@
 use crate::api::APIError;
-use crate::parsing::{check_archive, get_parser, parse_archive, BackgroundData};
-use crate::util::database::{BeatMap, UserID};
+use crate::parsing::{check_archive, get_parser, parse_archive};
+use crate::schema::parsing::BackgroundData;
+use crate::schema::{BeatMap, UserID};
 use crate::util::image::save_image;
 use crate::util::ratelimiter::{SiteAction, UniqueIdentifier};
 use crate::util::warp::{get_user, Replyable};
 use crate::util::{data, LockResultExt};
 use bytes::BufMut;
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use futures::TryStreamExt;
-use serde::{Deserialize, Serialize};
-use std::ops::{Deref, DerefMut};
-use std::time::{Duration, SystemTime};
-use tokio::time::timeout;
 use uuid::Uuid;
 use warp::multipart::FormData;
 use warp::{Rejection, Reply};
+use crate::util::mongo::{MAPS_COLLECTION, USERS_COLLECTION};
+use mongodb::bson;
+use std::ops::{Deref, DerefMut};
+use std::time::{Duration, SystemTime};
+use tokio::time::timeout;
+use mongodb::bson::doc;
 
 pub const MAX_SIZE: u32 = 200000000;
-
-#[derive(Default, Serialize, Deserialize)]
-pub struct UploadForm {
-    #[serde(rename = "firebaseToken")]
-    firebase_token: String,
-    beatmap: Vec<u8>,
-}
 
 pub async fn upload(identifier: UniqueIdentifier, form: FormData) -> Result<impl Reply, Rejection> {
     let form: Vec<(String, Vec<u8>)> = form.and_then(|mut field| async move {
@@ -70,7 +66,7 @@ pub async fn upload_beatmap(
     // Save the beatmap
     if let Some(map) = data().await
         .database
-        .query(MAPS_TABLE_NAME, "charter_uid", charter_id.to_string())
+        .query(MAPS_COLLECTION, doc! { "charter_uid": charter_id.to_string() })
         .await
         .map_err(APIError::database_error)?
         .into_iter()
@@ -80,16 +76,7 @@ pub async fn upload_beatmap(
         // Update the old map instead
         beatmap.id = map.id;
         data().await.database
-            .update(MAPS_TABLE_NAME, beatmap.id.to_string(), |builder| {
-                builder
-                    .update_expression("SET upload_date = :date")
-                    .expression_attribute_values(
-                        ":date",
-                        AttributeValue::S(<DateTime<Utc> as ToString>::to_string(&DateTime::from(
-                            SystemTime::now(),
-                        ))),
-                    )
-            })
+            .update(MAPS_COLLECTION, doc! { "id": beatmap.id.to_string() }, doc! { "$set": { "upload_date": bson::DateTime::now() } })
             .await
             .map_err(APIError::database_error)?;
     } else {
@@ -97,26 +84,14 @@ pub async fn upload_beatmap(
             .lock()
             .ignore_poison()
             .check_limited(SiteAction::Upload, &ip)?;
-
-        data().await.database
-            .add_to_list(
-                USERS_TABLE_NAME,
-                charter_id.to_string(),
-                "maps",
-                beatmap.id.to_string(),
-            )
-            .await?;
-        data().await.database
-            .upload_song(&beatmap)
-            .await
-            .map_err(APIError::database_error)?;
+        // Add map to user's maps
+        data().await.database.update(USERS_COLLECTION, doc! { "id": charter_id.to_string() }, doc! { "$push": { "maps": beatmap.id.to_string() } }).await.map_err(APIError::database_error)?;
+        // Insert the new BeatMap
+        data().await.database.upload(MAPS_COLLECTION, &beatmap).await.map_err(APIError::database_error)?;
     }
 
     save_image(&image, &bg_data, &&beatmap.id).await?;
-    data().await.database
-        .upload_object(beatmap_data, format!("{}.zip", beatmap.id).as_str())
-        .await
-        .map_err(APIError::database_error)?;
+    // TODO: Save the beatmap archive file if needed
     Ok(beatmap)
 }
 

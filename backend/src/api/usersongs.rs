@@ -1,31 +1,22 @@
 use crate::api::APIError;
-use crate::util::amazon::{MAPS_TABLE_NAME, USERS_TABLE_NAME};
-use crate::util::database::{BeatMap, User};
-use anyhow::Error;
-use serde::{Deserialize, Serialize};
-use warp::{Rejection, Reply};
+use crate::schema::usersongs::{SongsResult, UsersongsRequest};
+use crate::schema::{BeatMap, User};
 use crate::util::data;
+use crate::util::mongo::{MAPS_COLLECTION, USERS_COLLECTION};
 use crate::util::warp::Replyable;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserpageArguments {
-    pub user: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SongsResult {
-    pub results: Vec<BeatMap>,
-}
+use anyhow::Error;
+use mongodb::bson::doc;
+use warp::{Rejection, Reply};
 
 pub async fn usersongs(
-    user: String
+    req: UsersongsRequest
 ) -> Result<impl Reply, Rejection> {
-    let user: User = data().await.database.query_one(USERS_TABLE_NAME, "id", user)
+    let user: User = data().await.database.query_one(USERS_COLLECTION, doc! { "id": req.user_id.to_string() })
         .await
         .map_err(|err| APIError::DatabaseError(err.into()))?
         .ok_or(APIError::KnownArgumentError(Error::msg("No user with that id")))?;
     
-    let mut maps: Vec<BeatMap> = data().await.database.query(MAPS_TABLE_NAME, "charter_uid", user.id.to_string())
+    let mut maps: Vec<BeatMap> = data().await.database.query(MAPS_COLLECTION, doc! { "charter_uid": user.id.to_string() })
         .await
         .map_err(|err| APIError::DatabaseError(err.into()))?;
     maps.sort_by(|first, second| first.upvotes.cmp(&second.upvotes).reverse());

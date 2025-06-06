@@ -4,16 +4,15 @@ use anyhow::Error;
 use image::codecs::png::PngEncoder;
 use image::{ImageEncoder, ImageFormat, ImageReader, PixelWithColorType, Rgb, RgbImage};
 use crate::api::APIError;
-use crate::parsing::BackgroundData;
-use crate::util::data;
-use crate::util::database::MapID;
+use crate::schema::parsing::BackgroundData;
+use crate::schema::MapID;
 
 const SUPPORTED_FORMATS: [ImageFormat; 3] = [ImageFormat::Png, ImageFormat::Jpeg, ImageFormat::Bmp];
 
 pub async fn save_image(
     image: &Option<Vec<u8>>,
     bg_data: &Option<BackgroundData>,
-    uuid: &MapID,
+    _uuid: &MapID,
 ) -> Result<(), APIError> {
     let Some(ref image) = image else {
         return Ok(());
@@ -40,8 +39,7 @@ pub async fn save_image(
     let image = replace_image_channels(image.to_rgb8(), size, bg_data);
     PngEncoder::new(&mut output).write_image(image.as_ref(), size.0, size.1, <Rgb<u8> as PixelWithColorType>::COLOR_TYPE)
         .map_err(|err| APIError::ZipError(err.into()))?;
-    data().await.database.upload_object(output, format!("{uuid}.png").as_str()).await
-        .map_err(APIError::database_error)?;
+    // TODO: Implement image upload to storage backend
     Ok(())
 }
 

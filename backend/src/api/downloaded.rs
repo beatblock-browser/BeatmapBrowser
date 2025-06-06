@@ -1,26 +1,35 @@
 use warp::{Rejection, Reply};
 use crate::api::APIError;
-use crate::util::amazon::USERS_TABLE_NAME;
 use crate::util::data;
-use crate::util::database::{BeatMap, User};
 use crate::util::warp::Replyable;
+use crate::schema::downloaded::DownloadedRequest;
+use mongodb::bson::doc;
+use crate::schema::{BeatMap, User};
+use crate::util::mongo::USERS_COLLECTION;
 
 pub async fn download(
+    _req: DownloadedRequest,
     user: User,
     map: BeatMap
 ) -> Result<impl Reply, Rejection> {
-    if user.downloaded.contains(&map.id) {
-        return Err(APIError::AlreadyDownloaded().into());
+    if !user.downloaded.contains(&map.id) {
+        let mut new_downloaded = user.downloaded.clone();
+        new_downloaded.push(map.id);
+        let new_downloaded_str: Vec<String> = new_downloaded.iter().map(|id| id.to_string()).collect();
+        data().await.database.update(USERS_COLLECTION, doc! { "id": user.id.to_string() }, doc! { "$set": { "downloaded": new_downloaded_str } }).await.map_err(APIError::database_error)?;
     }
-    data().await.database.add_to_list(USERS_TABLE_NAME, user.id.to_string(), "downloaded", map.id.to_string()).await?;
     Ok("Ok".reply())
 }
 
 pub async fn remove(
+    _req: DownloadedRequest,
     mut user: User,
     map: BeatMap
 ) -> Result<impl Reply, Rejection> {
-    user.downloaded.remove(user.downloaded.iter().position(|elem| elem == &map.id).ok_or(APIError::AlreadyUpvoted())?);
-    data().await.database.overwrite_list(USERS_TABLE_NAME, user.id.to_string(), "downloaded", user.downloaded).await?;
+    if let Some(pos) = user.downloaded.iter().position(|elem| elem == &map.id) {
+        user.downloaded.remove(pos);
+        let downloaded_str: Vec<String> = user.downloaded.iter().map(|id| id.to_string()).collect();
+        data().await.database.update(USERS_COLLECTION, doc! { "id": user.id.to_string() }, doc! { "$set": { "downloaded": downloaded_str } }).await.map_err(APIError::database_error)?;
+    }
     Ok("Ok".reply())
 }

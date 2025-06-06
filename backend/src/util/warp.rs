@@ -1,15 +1,22 @@
 use crate::api::APIError;
-use crate::util::amazon::{MAPS_TABLE_NAME, TOKENS_TABLE_NAME, USERS_TABLE_NAME};
-use crate::util::database::{BeatMap, User};
+use crate::schema::signin::UserToken;
+use crate::schema::{BeatMap, User};
+use crate::util::auth::verify_jwt;
+use crate::util::data;
+use crate::util::mongo::{MAPS_COLLECTION, TOKENS_COLLECTION, USERS_COLLECTION};
 use crate::util::ratelimiter::{SiteAction, UniqueIdentifier};
-use serde::{Deserialize, Serialize};
+use anyhow::anyhow;
+use cookie::time::Duration;
+use cookie::{Cookie, SameSite};
+use mongodb::bson::doc;
+use serde::Serialize;
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use warp::body::json;
+use warp::http::header::AUTHORIZATION;
+use warp::http::HeaderValue;
+use warp::hyper::header::SET_COOKIE;
 use warp::reject::Reject;
 use warp::{reject, reply, Filter, Rejection, Reply};
-use crate::api::signin::UserToken;
-use crate::util::data;
 
 pub fn extract_identifier() -> impl Filter<Extract = (UniqueIdentifier,), Error = Infallible> + Copy {
     warp::addr::remote()
@@ -23,13 +30,6 @@ pub fn check_ratelimit(action: SiteAction) -> impl Filter<Extract = ((),), Error
     extract_identifier().and_then(move |identifier: UniqueIdentifier| async move {
         data().await.ratelimiter.lock().unwrap().check_limited(action, &identifier).map_err(reject::custom)
     })
-}
-
-pub fn extract_map() -> impl Filter<Extract = ((User, BeatMap),), Error = Rejection> + Copy {
-    json::<MapRequest>()
-        .and_then(|request: MapRequest| async move {
-            Ok::<(User, BeatMap), Rejection>((get_user(request.token).await.map_err(reject::custom)?, get_map(request.map_id).await.map_err(reject::custom)?))
-        })
 }
 
 pub async fn handle_error(err: Rejection) -> Result<impl Reply, Rejection> {
@@ -47,29 +47,22 @@ pub async fn handle_error(err: Rejection) -> Result<impl Reply, Rejection> {
     Err(err)
 }
 
-pub fn handle_auth() -> impl Filter<Extract = (User,), Error = Rejection> + Copy {
-    json::<AuthenticatedRequest>()
-        .and_then(|request: AuthenticatedRequest| async move {
-            get_user(request.token).await.map_err(reject::custom)
-        })
-}
-
 pub async fn get_user(token: String) -> Result<User, APIError> {
-    let user_id: UserToken = data().await.database.query_one(TOKENS_TABLE_NAME, "user_token", token)
+    let user_id: UserToken = data().await.database.query_one(TOKENS_COLLECTION, doc! { "user_token": token })
         .await
         .map_err(APIError::database_error)?
-        .ok_or(APIError::AuthError("Invalid token!".to_string()))?;
-    data().await.database.query_one(USERS_TABLE_NAME, "id", user_id.id.to_string())
+        .ok_or(APIError::AuthError(anyhow!("Invalid token!")))?;
+    data().await.database.query_one(USERS_COLLECTION, doc! { "id": user_id.id.to_string() })
         .await
         .map_err(APIError::database_error)?
-        .ok_or(APIError::AuthError("Invalid token!".to_string()))
+        .ok_or(APIError::AuthError(anyhow!("Invalid token!")))
 }
 
-async fn get_map(id: String) -> Result<BeatMap, APIError> {
-    data().await.database.query_one(MAPS_TABLE_NAME, "id", id)
+pub async fn get_map(id: String) -> Result<BeatMap, APIError> {
+    data().await.database.query_one(MAPS_COLLECTION, doc! { "id": id })
         .await
         .map_err(APIError::database_error)?
-        .ok_or(APIError::AuthError("Invalid map!".to_string()))
+        .ok_or(APIError::AuthError(anyhow!("Invalid map!")))
 }
 
 pub trait Replyable {
@@ -84,14 +77,52 @@ impl<T: Serialize> Replyable for T {
 
 impl Reject for APIError {}
 
-#[derive(Debug, Deserialize)]
-pub struct AuthenticatedRequest {
-    token: String,
+// Extracts the JWT from the Authorization header and verifies it
+pub fn with_auth() -> impl Filter<Extract = (User,), Error = Rejection> + Clone {
+    warp::header::<String>(AUTHORIZATION.as_str()).and_then(|auth_header: String| async move {
+        if !auth_header.starts_with("Bearer ") {
+            return Err(reject::custom(APIError::AuthError(anyhow!("Invalid authorization header format"))));
+        }
+        let token = auth_header.trim_start_matches("Bearer ").trim();
+        match verify_jwt(token) {
+            Ok(claims) => {
+                let user = data().await.database.query::<User>(USERS_COLLECTION, doc! { "id": claims.sub})
+                    .await
+                    .map_err(APIError::database_error)?
+                    .into_iter().next()
+                    .ok_or_else(|| APIError::AuthError(anyhow!("User not found")))?;
+                Ok(user)
+            },
+            Err(e) => Err(reject::custom(APIError::AuthError(e))),
+        }
+    })
 }
 
-#[derive(Debug, Deserialize)]
-pub struct MapRequest {
-    #[serde(rename = "mapId")]
-    pub map_id: String,
-    token: String,
+// Helper function to create the cookie string
+pub fn create_session_cookie(name: &str, value: &str) -> String {
+    Cookie::build((name, value)) // Use tuple for name & value
+        .path("/") // Available for the whole site
+        .http_only(true) // Prevent JS access (important!)
+        .secure(true) // Only send over HTTPS (important!)
+        .same_site(SameSite::Lax) // Good balance for CSRF protection
+        // Set expiration (e.g., 1 hour from now)
+        .max_age(Duration::hours(1))
+        // Or set an absolute expiry time:
+        // .expires(OffsetDateTime::now_utc() + Duration::hours(1))
+        .build() // Build the Cookie struct
+        .to_string() // Convert to the string format for the header
+}
+
+// Helper function to create a JWT response with cookie
+pub fn create_jwt_response(user: User) -> Result<impl Reply, Rejection> {
+    use crate::util::auth::generate_jwt;
+
+    let token = generate_jwt(&user.id.to_string())
+        .map_err(|err| reject::custom(APIError::AuthError(err)))?;
+
+    let cookie_string = create_session_cookie("jwt", &token);
+    let cookie_header_value = HeaderValue::from_str(&cookie_string)
+        .map_err(|err| <APIError as Into<Rejection>>::into(APIError::AuthError(err.into())))?;
+
+    Ok(reply::with_header(user.reply(), SET_COOKIE, cookie_header_value))
 }
