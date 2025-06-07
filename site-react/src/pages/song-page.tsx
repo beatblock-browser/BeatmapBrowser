@@ -53,8 +53,26 @@ export default function SongPage() {
         setIsAnimating(true);
         setContentVisible(false);
 
+        // Create a DOMRect for the animation
+        let cardPosition: DOMRect;
+        if (!state?.cardPosition) {
+            cardPosition = new DOMRect(0, 0, 300, 200);
+        } else {
+            cardPosition = new DOMRect(
+                state.cardPosition.left,
+                state.cardPosition.top,
+                state.cardPosition.width,
+                state.cardPosition.height
+            );
+        }
+
         // Navigate immediately
-        navigate('/');
+        navigate('/', {
+            state: {
+                map,
+                cardPosition
+            }
+        });
 
         // Start reverse animation
         const banner = document.createElement('div');
@@ -74,19 +92,6 @@ export default function SongPage() {
                 });
             }
         };
-
-        // Create a DOMRect for the animation
-        let cardPosition: DOMRect;
-        if (!state?.cardPosition) {
-            cardPosition = new DOMRect(0, 0, 300, 200);
-        } else {
-            cardPosition = new DOMRect(
-                state.cardPosition.left,
-                state.cardPosition.top,
-                state.cardPosition.width,
-                state.cardPosition.height
-            );
-        }
 
         // Render the AnimatedBanner with reverse animation
         root.render(

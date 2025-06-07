@@ -1,22 +1,24 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { SearchRequest, SearchResult } from "@/schema/search";
 import { BeatMap } from "@/schema";
 import { useNavigate } from "react-router-dom";
 import { AnimatedBanner } from "@/components/AnimatedBanner";
 import ReactDOM from "react-dom/client";
+import { useSearchCache } from "@/context/SearchCache";
 // @ts-ignore IDE doesn't recognize image imports.
 import default_image from './../public/beatblocks.jpg';
 
 export default function HomePage() {
-    const [results, setResults] = useState<BeatMap[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [animatingCard, setAnimatingCard] = useState<{ map: BeatMap, position: DOMRect } | null>(null);
+    const { results, setResults, isLoading, setIsLoading } = useSearchCache();
+    const [error, setError] = React.useState<string | null>(null);
     const navigate = useNavigate();
 
     useEffect(() => {
         const fetchResults = async () => {
-            setLoading(true);
+            // Only fetch if we don't have results
+            if (results.length > 0) return;
+
+            setIsLoading(true);
             setError(null);
             try {
                 const res = await fetch("/api/search", {
@@ -30,11 +32,11 @@ export default function HomePage() {
             } catch (e: any) {
                 setError(e.message || "Unknown error");
             } finally {
-                setLoading(false);
+                setIsLoading(false);
             }
         };
         fetchResults();
-    }, []);
+    }, [results.length, setResults, setIsLoading]);
 
     const handleCardClick = (map: BeatMap, cardElement: HTMLElement) => {
         const rect = cardElement.getBoundingClientRect();
@@ -93,9 +95,9 @@ export default function HomePage() {
     return (
         <div className="max-w-6xl mx-auto p-4">
             <h1 className="text-2xl mb-6 font-['Press_Start_2P'] text-center">Beatmap Browser</h1>
-            {loading && <div className="text-center font-['Press_Start_2P']">Loading...</div>}
+            {isLoading && <div className="text-center font-['Press_Start_2P']">Loading...</div>}
             {error && <div className="text-red-500 text-center font-['Press_Start_2P']">Error: {error}</div>}
-            {!loading && !error && (
+            {!isLoading && !error && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {results.length === 0 && (
                         <div className="col-span-full text-center font-['Press_Start_2P']">No results found.</div>
