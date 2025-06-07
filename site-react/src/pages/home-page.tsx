@@ -3,6 +3,7 @@ import { SearchRequest, SearchResult } from "@/schema/search";
 import { BeatMap } from "@/schema";
 import { useNavigate } from "react-router-dom";
 import { AnimatedBanner } from "@/components/AnimatedBanner";
+import ReactDOM from "react-dom/client";
 // @ts-ignore IDE doesn't recognize image imports.
 import default_image from './../public/beatblocks.jpg';
 
@@ -35,10 +36,58 @@ export default function HomePage() {
         fetchResults();
     }, []);
 
-    const handleCardClick = (map: BeatMap, event: React.MouseEvent<HTMLButtonElement>) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        console.log('Card clicked, position:', rect);
-        setAnimatingCard({ map, position: rect });
+    const handleCardClick = (map: BeatMap, cardElement: HTMLElement) => {
+        const rect = cardElement.getBoundingClientRect();
+        
+        const cardPosition = {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+            scrollY: window.scrollY
+        };
+
+        // Start animation
+        const banner = document.createElement('div');
+        document.body.appendChild(banner);
+        const root = ReactDOM.createRoot(banner);
+        
+        const cleanup = () => {
+            // Unmount the React component
+            root.unmount();
+            // Remove the container
+            document.body.removeChild(banner);
+        };
+
+        const handleAnimationComplete = () => {
+            cleanup();
+            // Navigate after animation completes
+            const state = {
+                initialImage: map.image ? `https://beatmap-browser.s3.amazonaws.com/${map.id}.png` : default_image,
+                initialSong: map.song,
+                initialArtist: map.artist,
+                initialCharter: map.charter,
+                cardPosition
+            };
+            navigate(`/song/${map.id}`, { state });
+        };
+
+        // Create a DOMRect for the animation
+        const animationRect = new DOMRect(
+            rect.left,
+            rect.top,
+            rect.width,
+            rect.height
+        );
+
+        // Render the AnimatedBanner
+        root.render(
+            <AnimatedBanner
+                map={map}
+                cardPosition={animationRect}
+                onAnimationComplete={handleAnimationComplete}
+            />
+        );
     };
 
     return (
@@ -54,7 +103,7 @@ export default function HomePage() {
                     {results.map((map) => (
                         <button 
                             key={map.id}
-                            onClick={(e) => handleCardClick(map, e)}
+                            onClick={(e) => handleCardClick(map, e.currentTarget)}
                             className="block w-full aspect-[32/9] border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] 
                                      hover:translate-x-1 hover:translate-y-1 hover:shadow-none 
                                      transition-all duration-100 cursor-pointer overflow-hidden relative text-left"
@@ -79,13 +128,6 @@ export default function HomePage() {
                         </button>
                     ))}
                 </div>
-            )}
-            {animatingCard && (
-                <AnimatedBanner
-                    map={animatingCard.map}
-                    cardPosition={animatingCard.position}
-                    onAnimationComplete={() => setAnimatingCard(null)}
-                />
             )}
         </div>
     );

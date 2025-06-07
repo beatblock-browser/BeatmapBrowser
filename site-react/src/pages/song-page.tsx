@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { BeatMap } from "@/schema";
+import { AnimatedBanner } from "@/components/AnimatedBanner";
+import ReactDOM from "react-dom/client";
 // @ts-ignore IDE doesn't recognize image imports.
 import default_image from './../public/beatblocks.jpg';
 
@@ -9,16 +11,19 @@ interface LocationState {
     initialSong: string;
     initialArtist: string;
     initialCharter: string;
+    cardPosition?: DOMRect;
 }
 
 export default function SongPage() {
     const { id } = useParams();
     const location = useLocation();
+    const navigate = useNavigate();
     const state = location.state as LocationState;
     const [map, setMap] = useState<BeatMap | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [contentVisible, setContentVisible] = useState(false);
+    const [isAnimating, setIsAnimating] = useState(false);
 
     useEffect(() => {
         const fetchMap = async () => {
@@ -42,12 +47,87 @@ export default function SongPage() {
         fetchMap();
     }, [id]);
 
+    const handleBack = () => {
+        console.log('Back button clicked');
+        console.log('Map:', map);
+        console.log('State:', state);
+        console.log('Card position:', state?.cardPosition);
+        
+        if (!map || isAnimating) {
+            console.log('Cannot animate: map or isAnimating check failed');
+            return;
+        }
+        
+        let cardPosition: DOMRect;
+        if (!state?.cardPosition) {
+            console.log('No card position in state, using default');
+            cardPosition = new DOMRect(0, 0, 300, 200);
+        } else {
+            // Create DOMRect from viewport-relative position
+            cardPosition = new DOMRect(
+                state.cardPosition.left,
+                state.cardPosition.top,
+                state.cardPosition.width,
+                state.cardPosition.height
+            );
+        }
+        
+        setIsAnimating(true);
+        setContentVisible(false);
+        
+        // Start reverse animation
+        const banner = document.createElement('div');
+        document.body.appendChild(banner);
+        const root = ReactDOM.createRoot(banner);
+        
+        const cleanup = () => {
+            console.log('Cleaning up animation');
+            // Unmount the React component
+            root.unmount();
+            // Remove the container
+            document.body.removeChild(banner);
+            setIsAnimating(false);
+            
+            // Scroll to the saved position
+            if (state?.cardPosition?.scrollY !== undefined) {
+                window.scrollTo({
+                    top: state.cardPosition.scrollY,
+                    behavior: 'instant'
+                });
+            }
+            
+            // Navigate after a small delay to ensure scroll happens
+            setTimeout(() => {
+                navigate('/');
+            }, 50);
+        };
+
+        // Render the AnimatedBanner with reverse animation
+        root.render(
+            <AnimatedBanner
+                map={map}
+                cardPosition={cardPosition}
+                onAnimationComplete={cleanup}
+                isReversing={true}
+            />
+        );
+    };
+
     if (error) return <div className="text-red-500 text-center font-['Press_Start_2P']">Error: {error}</div>;
 
     return (
         <div className="min-h-screen bg-gray-100">
             {/* Static Banner */}
             <div className="relative h-64 w-full">
+                <button
+                    onClick={handleBack}
+                    className="absolute top-4 left-4 z-10 bg-white/90 hover:bg-white text-black p-2 rounded-full shadow-lg transition-colors"
+                    disabled={isAnimating}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
                 <img 
                     src={map?.image ? `https://beatmap-browser.s3.amazonaws.com/${map.id}.png` : state?.initialImage || default_image}
                     alt={map?.song || state?.initialSong || "Loading..."}
