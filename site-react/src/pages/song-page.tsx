@@ -48,43 +48,21 @@ export default function SongPage() {
     }, [id]);
 
     const handleBack = () => {
-        console.log('Back button clicked');
-        console.log('Map:', map);
-        console.log('State:', state);
-        console.log('Card position:', state?.cardPosition);
-        
-        if (!map || isAnimating) {
-            console.log('Cannot animate: map or isAnimating check failed');
-            return;
-        }
-        
-        let cardPosition: DOMRect;
-        if (!state?.cardPosition) {
-            console.log('No card position in state, using default');
-            cardPosition = new DOMRect(0, 0, 300, 200);
-        } else {
-            // Create DOMRect from viewport-relative position
-            cardPosition = new DOMRect(
-                state.cardPosition.left,
-                state.cardPosition.top,
-                state.cardPosition.width,
-                state.cardPosition.height
-            );
-        }
+        if (!map || isAnimating) return;
         
         setIsAnimating(true);
         setContentVisible(false);
-        
+
+        // Navigate immediately
+        navigate('/');
+
         // Start reverse animation
         const banner = document.createElement('div');
         document.body.appendChild(banner);
         const root = ReactDOM.createRoot(banner);
         
         const cleanup = () => {
-            console.log('Cleaning up animation');
-            // Unmount the React component
             root.unmount();
-            // Remove the container
             document.body.removeChild(banner);
             setIsAnimating(false);
             
@@ -95,12 +73,20 @@ export default function SongPage() {
                     behavior: 'instant'
                 });
             }
-            
-            // Navigate after a small delay to ensure scroll happens
-            setTimeout(() => {
-                navigate('/');
-            }, 50);
         };
+
+        // Create a DOMRect for the animation
+        let cardPosition: DOMRect;
+        if (!state?.cardPosition) {
+            cardPosition = new DOMRect(0, 0, 300, 200);
+        } else {
+            cardPosition = new DOMRect(
+                state.cardPosition.left,
+                state.cardPosition.top,
+                state.cardPosition.width,
+                state.cardPosition.height
+            );
+        }
 
         // Render the AnimatedBanner with reverse animation
         root.render(
