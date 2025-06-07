@@ -1,111 +1,25 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { BeatMap } from "@/schema";
-import { AnimatedBanner } from "@/components/AnimatedBanner";
-import ReactDOM from "react-dom/client";
 // @ts-ignore IDE doesn't recognize image imports.
 import default_image from './../public/beatblocks.jpg';
 
-interface LocationState {
-    initialImage: string;
-    initialSong: string;
-    initialArtist: string;
-    initialCharter: string;
-    cardPosition?: DOMRect;
+interface SongPageProps {
+    map: BeatMap;
+    cardPosition: DOMRect;
+    onBack: () => void;
 }
 
-export default function SongPage() {
-    const { id } = useParams();
-    const location = useLocation();
-    const navigate = useNavigate();
-    const state = location.state as LocationState;
-    const [map, setMap] = useState<BeatMap | null>(null);
+export default function SongPage({ map, cardPosition, onBack }: SongPageProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [contentVisible, setContentVisible] = useState(false);
-    const [isAnimating, setIsAnimating] = useState(false);
 
     useEffect(() => {
-        const fetchMap = async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const res = await fetch(`/api/map/${id}`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                setMap(data);
-                // Delay showing content until after the banner animation
-                setTimeout(() => {
-                    setContentVisible(true);
-                }, 600);
-            } catch (e: any) {
-                setError(e.message || "Unknown error");
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchMap();
-    }, [id]);
-
-    const handleBack = () => {
-        if (!map || isAnimating) return;
-        
-        setIsAnimating(true);
-        setContentVisible(false);
-
-        // Create a DOMRect for the animation
-        let cardPosition: DOMRect;
-        if (!state?.cardPosition) {
-            cardPosition = new DOMRect(0, 0, 300, 200);
-        } else {
-            cardPosition = new DOMRect(
-                state.cardPosition.left,
-                state.cardPosition.top,
-                state.cardPosition.width,
-                state.cardPosition.height
-            );
-        }
-
-        // Navigate immediately
-        navigate('/', {
-            state: {
-                map,
-                cardPosition
-            }
-        });
-
-        // Use requestAnimationFrame to ensure navigation happens before animation
-        requestAnimationFrame(() => {
-            // Start reverse animation
-            const banner = document.createElement('div');
-            document.body.appendChild(banner);
-            const root = ReactDOM.createRoot(banner);
-            
-            const cleanup = () => {
-                root.unmount();
-                document.body.removeChild(banner);
-                setIsAnimating(false);
-                
-                // Scroll to the saved position
-                if (state?.cardPosition?.scrollY !== undefined) {
-                    window.scrollTo({
-                        top: state.cardPosition.scrollY,
-                        behavior: 'instant'
-                    });
-                }
-            };
-
-            // Render the AnimatedBanner with reverse animation
-            root.render(
-                <AnimatedBanner
-                    map={map}
-                    cardPosition={cardPosition}
-                    onAnimationComplete={cleanup}
-                    isReversing={true}
-                />
-            );
-        });
-    };
+        // Delay showing content until after the banner animation
+        setTimeout(() => {
+            setContentVisible(true);
+        }, 600);
+    }, []);
 
     if (error) return <div className="text-red-500 text-center font-['Press_Start_2P']">Error: {error}</div>;
 
@@ -114,24 +28,23 @@ export default function SongPage() {
             {/* Static Banner */}
             <div className="relative h-64 w-full">
                 <button
-                    onClick={handleBack}
+                    onClick={onBack}
                     className="absolute top-4 left-4 z-10 bg-white/90 hover:bg-white text-black p-2 rounded-full shadow-lg transition-colors"
-                    disabled={isAnimating}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
                 </button>
                 <img 
-                    src={map?.image ? `https://beatmap-browser.s3.amazonaws.com/${map.id}.png` : state?.initialImage || default_image}
-                    alt={map?.song || state?.initialSong || "Loading..."}
+                    src={map.image ? `https://beatmap-browser.s3.amazonaws.com/${map.id}.png` : default_image}
+                    alt={map.song}
                     className="absolute inset-0 w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-black/60" />
                 <div className="absolute inset-0 flex flex-col justify-end p-8 text-white">
-                    <h1 className="text-4xl font-['Press_Start_2P'] mb-2">{map?.song || state?.initialSong || "Loading..."}</h1>
-                    <p className="text-xl font-['Press_Start_2P'] mb-1">by {map?.artist || state?.initialArtist || "..."}</p>
-                    <p className="text-xl font-['Press_Start_2P']">Charter: {map?.charter || state?.initialCharter || "..."}</p>
+                    <h1 className="text-4xl font-['Press_Start_2P'] mb-2">{map.song}</h1>
+                    <p className="text-xl font-['Press_Start_2P'] mb-1">by {map.artist}</p>
+                    <p className="text-xl font-['Press_Start_2P']">Charter: {map.charter}</p>
                 </div>
             </div>
 
@@ -146,7 +59,7 @@ export default function SongPage() {
                 >
                     {loading ? (
                         <div className="text-center font-['Press_Start_2P']">Loading details...</div>
-                    ) : map ? (
+                    ) : (
                         <div className="flex gap-6">
                             {/* Left Sidebar */}
                             <div className="w-64 flex-shrink-0">
@@ -194,8 +107,6 @@ export default function SongPage() {
                                 </div>
                             </div>
                         </div>
-                    ) : (
-                        <div className="text-center font-['Press_Start_2P']">Map not found</div>
                     )}
                 </div>
             </div>
