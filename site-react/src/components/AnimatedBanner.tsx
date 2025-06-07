@@ -24,6 +24,7 @@ export function AnimatedBanner({ map, cardPosition, onAnimationComplete, isRever
         const startY = cardPosition.top;
         const startWidth = cardPosition.width;
         const startHeight = cardPosition.height;
+        const scrollY = window.scrollY;
 
         // Set initial position
         banner.style.position = 'fixed';
@@ -61,8 +62,10 @@ export function AnimatedBanner({ map, cardPosition, onAnimationComplete, isRever
         
         requestAnimationFrame(() => {
             if (isReversing) {
-                banner.style.transform = `translate(${startX}px, ${startY}px) scale(${startWidth / window.innerWidth}, ${startHeight / 256})`;
-                panel.style.transform = `translate(${startX}px, ${startY + startHeight}px) scale(${startWidth / window.innerWidth}, 0)`;
+                // For reverse animation, adjust the target position by the current scroll
+                const targetY = startY - scrollY;
+                banner.style.transform = `translate(${startX}px, ${targetY}px) scale(${startWidth / window.innerWidth}, ${startHeight / 256})`;
+                panel.style.transform = `translate(${startX}px, ${targetY + startHeight}px) scale(${startWidth / window.innerWidth}, 0)`;
             } else {
                 banner.style.transform = 'none';
                 panel.style.transform = 'none';

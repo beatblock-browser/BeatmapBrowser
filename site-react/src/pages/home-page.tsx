@@ -38,6 +38,11 @@ export default function HomePage({ onCardClick }: HomePageProps) {
         fetchResults();
     }, [results.length, setResults, setIsLoading]);
 
+    const handleCardClick = (map: BeatMap, e: React.MouseEvent<HTMLButtonElement>) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        onCardClick(map, e.currentTarget);
+    };
+
     return (
         <div className="max-w-6xl mx-auto p-4">
             <h1 className="text-2xl mb-6 font-['Press_Start_2P'] text-center">Beatmap Browser</h1>
@@ -51,7 +56,7 @@ export default function HomePage({ onCardClick }: HomePageProps) {
                     {results.map((map) => (
                         <button 
                             key={map.id}
-                            onClick={(e) => onCardClick(map, e.currentTarget)}
+                            onClick={(e) => handleCardClick(map, e)}
                             className="block w-full aspect-[32/9] border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] 
                                      hover:translate-x-1 hover:translate-y-1 hover:shadow-none 
                                      transition-all duration-100 cursor-pointer overflow-hidden relative text-left"

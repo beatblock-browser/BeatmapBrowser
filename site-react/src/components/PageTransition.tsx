@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BeatMap } from '@/schema';
 import HomePage from '@/pages/home-page';
 import SongPage from '@/pages/song-page';
@@ -11,10 +11,14 @@ export default function PageTransition() {
     const [isReversing, setIsReversing] = useState(false);
     const [pendingMap, setPendingMap] = useState<BeatMap | null>(null);
     const [animatingMap, setAnimatingMap] = useState<BeatMap | null>(null);
+    const [savedScrollY, setSavedScrollY] = useState<number>(0);
 
     // Handle card click from home page
     const handleCardClick = (map: BeatMap, cardElement: HTMLElement) => {
         const rect = cardElement.getBoundingClientRect();
+        const scrollY = window.scrollY;
+        
+        // Store the viewport-relative position
         const position = new DOMRect(
             rect.left,
             rect.top,
@@ -24,6 +28,7 @@ export default function PageTransition() {
         
         setPendingMap(map);
         setCardPosition(position);
+        setSavedScrollY(scrollY);
         setIsAnimating(true);
         setIsReversing(false);
     };
@@ -37,6 +42,14 @@ export default function PageTransition() {
         // Start reverse animation
         setIsAnimating(true);
         setIsReversing(true);
+        
+        // Restore scroll position after a short delay to ensure DOM is ready
+        requestAnimationFrame(() => {
+            window.scrollTo({
+                top: savedScrollY,
+                behavior: 'auto'
+            });
+        });
     };
 
     // Handle animation completion
