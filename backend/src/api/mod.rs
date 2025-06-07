@@ -1,9 +1,17 @@
+use crate::schema::BeatMap;
+use crate::util::mongo::{MongoDB, MAPS_COLLECTION};
 use actix_web::http::StatusCode;
-use actix_web::{HttpResponse, ResponseError};
-use anyhow::Error;
+use actix_web::web::{Data, Json, Path};
+use actix_web::{get, HttpResponse, ResponseError};
+use anyhow::{anyhow, Error};
+use mongodb::bson::doc;
+use std::sync::Arc;
+use bson::serde_helpers::serialize_uuid_1_as_binary;
+use bson::{Binary, Uuid};
+use bson::spec::BinarySubtype;
+use log::error;
 use thiserror::Error;
 use tokio::time::error::Elapsed;
-use log::error;
 
 //pub mod delete;
 //pub mod downloaded;
@@ -12,6 +20,24 @@ pub mod search;
 //pub mod upvote;
 //pub mod usersongs;
 //pub mod signin;
+
+#[get("/map/{map_id}")]
+pub async fn map_data(
+    map_id: Path<String>,
+    database: Data<Arc<MongoDB>>,
+) -> Result<Json<BeatMap>, APIError> {
+    Ok(Json(
+        database.query_one::<BeatMap>(MAPS_COLLECTION, doc! { "id":
+            Binary {
+                subtype: BinarySubtype::Generic,
+                bytes: Uuid::parse_str(map_id.as_ref())
+                .map_err(|err| APIError::KnownArgumentError(err.into()))?.bytes().to_vec() }
+        })
+            .await
+            .map_err(APIError::database_error)
+            .transpose().unwrap_or_else(|| Err(APIError::KnownArgumentError(anyhow!("Beatmap not found!"))))?
+    ))
+}
 
 #[derive(Error, Debug)]
 pub enum APIError {

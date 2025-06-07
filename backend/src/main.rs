@@ -14,9 +14,10 @@ use firebase_auth::FirebaseAuth;
 use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use actix_files::Files;
+use actix_files::{Files, NamedFile};
 use actix_web::middleware::Logger;
 use actix_web::web::Data;
+use crate::api::{map_data, APIError};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -44,12 +45,19 @@ async fn main() -> Result<(), Error> {
             .app_data(Data::new(database.clone()))
             .service(web::scope("/api")
                 .service(search)
+                .service(map_data)
                 .wrap(Governor::new(&normal_request)))
             .service(Files::new("/", env::args().nth(2).unwrap())
-                .index_file("index.html"))
+                .index_file("index.html")
+                .default_handler(web::route().to(spa_fallback)))
     })
         .bind(env::args().nth(1).unwrap().parse::<SocketAddr>()?)?
         .run()
         .await?;
     Ok(())
+}
+
+async fn spa_fallback() -> Result<NamedFile, APIError> {
+    Ok(NamedFile::open(format!("{}/index.html", env::args().nth(2).unwrap()))
+        .map_err(|err| APIError::IOError(err))?)
 }

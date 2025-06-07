@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { SearchRequest, SearchResult } from "@/schema/search";
 import { BeatMap } from "@/schema";
+import { useNavigate } from "react-router-dom";
 // @ts-ignore IDE doesn't recognize image imports.
 import default_image from './../public/beatblocks.jpg';
 
@@ -8,6 +9,7 @@ export default function HomePage() {
     const [results, setResults] = useState<BeatMap[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const navigate = useNavigate();
 
     useEffect(() => {
         const fetchResults = async () => {
@@ -31,6 +33,10 @@ export default function HomePage() {
         fetchResults();
     }, []);
 
+    const handleCardClick = (id: string) => {
+        navigate(`/song/${id}`);
+    };
+
     return (
         <div className="max-w-6xl mx-auto p-4">
             <h1 className="text-2xl mb-6 font-['Press_Start_2P'] text-center">Beatmap Browser</h1>
@@ -42,11 +48,12 @@ export default function HomePage() {
                         <div className="col-span-full text-center font-['Press_Start_2P']">No results found.</div>
                     )}
                     {results.map((map) => (
-                        <div 
-                            key={map.id} 
-                            className="aspect-[32/9] border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] 
+                        <button 
+                            key={map.id}
+                            onClick={() => handleCardClick(map.id)}
+                            className="block w-full aspect-[32/9] border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] 
                                      hover:translate-x-1 hover:translate-y-1 hover:shadow-none 
-                                     transition-all duration-100 cursor-pointer overflow-hidden relative"
+                                     transition-all duration-100 cursor-pointer overflow-hidden relative text-left"
                         >
                             <img 
                                 src={map.image ? `https://beatmap-browser.s3.amazonaws.com/${map.id}.png` : default_image}
@@ -65,7 +72,7 @@ export default function HomePage() {
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </button>
                     ))}
                 </div>
             )}
