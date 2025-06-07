@@ -37,6 +37,7 @@ export function AnimatedBanner({ map, cardPosition, onAnimationComplete, isRever
         banner.style.transform = isReversing 
             ? 'none'
             : `translate(${startX}px, ${startY}px) scale(${startWidth / window.innerWidth}, ${startHeight / 256})`;
+        banner.style.opacity = '1';
 
         panel.style.position = 'fixed';
         panel.style.top = '256px';
@@ -48,6 +49,7 @@ export function AnimatedBanner({ map, cardPosition, onAnimationComplete, isRever
         panel.style.transform = isReversing
             ? 'none'
             : `translate(${startX}px, ${startY + startHeight}px) scale(${startWidth / window.innerWidth}, 0)`;
+        panel.style.opacity = '1';
 
         // Force reflow
         banner.offsetHeight;
@@ -85,13 +87,24 @@ export function AnimatedBanner({ map, cardPosition, onAnimationComplete, isRever
                 style={{
                     backgroundColor: 'white',
                     border: '2px solid black',
-                    willChange: 'transform'
+                    willChange: 'transform',
+                    backfaceVisibility: 'hidden',
+                    WebkitBackfaceVisibility: 'hidden',
+                    WebkitTransform: 'translateZ(0)',
+                    transform: 'translateZ(0)'
                 }}
             >
                 <img 
                     src={map.image ? `https://beatmap-browser.s3.amazonaws.com/${map.id}.png` : default_image}
                     alt={map.song}
                     className="absolute inset-0 w-full h-full object-cover"
+                    style={{
+                        willChange: 'transform',
+                        backfaceVisibility: 'hidden',
+                        WebkitBackfaceVisibility: 'hidden',
+                        WebkitTransform: 'translateZ(0)',
+                        transform: 'translateZ(0)'
+                    }}
                 />
                 <div className="absolute inset-0 bg-black/60" />
                 <div className="absolute inset-0 flex flex-col justify-end p-8 text-white">
@@ -104,7 +117,11 @@ export function AnimatedBanner({ map, cardPosition, onAnimationComplete, isRever
                 ref={panelRef}
                 className="fixed bg-gray-100"
                 style={{
-                    willChange: 'transform'
+                    willChange: 'transform',
+                    backfaceVisibility: 'hidden',
+                    WebkitBackfaceVisibility: 'hidden',
+                    WebkitTransform: 'translateZ(0)',
+                    transform: 'translateZ(0)'
                 }}
             />
         </>,

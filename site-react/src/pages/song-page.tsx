@@ -74,34 +74,37 @@ export default function SongPage() {
             }
         });
 
-        // Start reverse animation
-        const banner = document.createElement('div');
-        document.body.appendChild(banner);
-        const root = ReactDOM.createRoot(banner);
-        
-        const cleanup = () => {
-            root.unmount();
-            document.body.removeChild(banner);
-            setIsAnimating(false);
+        // Use requestAnimationFrame to ensure navigation happens before animation
+        requestAnimationFrame(() => {
+            // Start reverse animation
+            const banner = document.createElement('div');
+            document.body.appendChild(banner);
+            const root = ReactDOM.createRoot(banner);
             
-            // Scroll to the saved position
-            if (state?.cardPosition?.scrollY !== undefined) {
-                window.scrollTo({
-                    top: state.cardPosition.scrollY,
-                    behavior: 'instant'
-                });
-            }
-        };
+            const cleanup = () => {
+                root.unmount();
+                document.body.removeChild(banner);
+                setIsAnimating(false);
+                
+                // Scroll to the saved position
+                if (state?.cardPosition?.scrollY !== undefined) {
+                    window.scrollTo({
+                        top: state.cardPosition.scrollY,
+                        behavior: 'instant'
+                    });
+                }
+            };
 
-        // Render the AnimatedBanner with reverse animation
-        root.render(
-            <AnimatedBanner
-                map={map}
-                cardPosition={cardPosition}
-                onAnimationComplete={cleanup}
-                isReversing={true}
-            />
-        );
+            // Render the AnimatedBanner with reverse animation
+            root.render(
+                <AnimatedBanner
+                    map={map}
+                    cardPosition={cardPosition}
+                    onAnimationComplete={cleanup}
+                    isReversing={true}
+                />
+            );
+        });
     };
 
     if (error) return <div className="text-red-500 text-center font-['Press_Start_2P']">Error: {error}</div>;
