@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { SearchRequest, SearchResult } from "@/schema/search";
 import { BeatMap } from "@/schema";
 import { useNavigate } from "react-router-dom";
+import { AnimatedBanner } from "@/components/AnimatedBanner";
 // @ts-ignore IDE doesn't recognize image imports.
 import default_image from './../public/beatblocks.jpg';
 
@@ -9,6 +10,7 @@ export default function HomePage() {
     const [results, setResults] = useState<BeatMap[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [animatingCard, setAnimatingCard] = useState<{ map: BeatMap, position: DOMRect } | null>(null);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -33,8 +35,10 @@ export default function HomePage() {
         fetchResults();
     }, []);
 
-    const handleCardClick = (id: string) => {
-        navigate(`/song/${id}`);
+    const handleCardClick = (map: BeatMap, event: React.MouseEvent<HTMLButtonElement>) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        console.log('Card clicked, position:', rect);
+        setAnimatingCard({ map, position: rect });
     };
 
     return (
@@ -50,7 +54,7 @@ export default function HomePage() {
                     {results.map((map) => (
                         <button 
                             key={map.id}
-                            onClick={() => handleCardClick(map.id)}
+                            onClick={(e) => handleCardClick(map, e)}
                             className="block w-full aspect-[32/9] border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] 
                                      hover:translate-x-1 hover:translate-y-1 hover:shadow-none 
                                      transition-all duration-100 cursor-pointer overflow-hidden relative text-left"
@@ -75,6 +79,13 @@ export default function HomePage() {
                         </button>
                     ))}
                 </div>
+            )}
+            {animatingCard && (
+                <AnimatedBanner
+                    map={animatingCard.map}
+                    cardPosition={animatingCard.position}
+                    onAnimationComplete={() => setAnimatingCard(null)}
+                />
             )}
         </div>
     );

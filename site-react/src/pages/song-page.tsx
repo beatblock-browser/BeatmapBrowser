@@ -34,7 +34,7 @@ export default function SongPage() {
 
     return (
         <div className="min-h-screen bg-gray-100">
-            {/* Banner */}
+            {/* Static Banner */}
             <div className="relative h-64 w-full">
                 <img 
                     src={map.image ? `https://beatmap-browser.s3.amazonaws.com/${map.id}.png` : default_image}
@@ -50,7 +50,7 @@ export default function SongPage() {
             </div>
 
             {/* Main Content */}
-            <div className="max-w-7xl mx-auto p-4">
+            <div className="max-w-6xl mx-auto p-4">
                 <div className="flex gap-6">
                     {/* Left Sidebar */}
                     <div className="w-64 flex-shrink-0">
