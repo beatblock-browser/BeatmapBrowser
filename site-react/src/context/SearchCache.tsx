@@ -5,7 +5,7 @@ interface SearchCacheContextType {
     results: BeatMap[];
     setResults: (results: BeatMap[]) => void;
     isLoading: boolean;
-    setIsLoading: (loading: boolean) => void;
+    setIsLoading: (isLoading: boolean) => void;
 }
 
 const SearchCacheContext = createContext<SearchCacheContextType | undefined>(undefined);

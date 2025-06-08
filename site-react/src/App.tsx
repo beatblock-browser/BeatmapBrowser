@@ -1,11 +1,9 @@
 import React from 'react';
-import PageTransition from './components/PageTransition';
-import { SearchCacheProvider } from './context/SearchCache';
+import HomePage from './pages/home-page';
+import {SearchCacheProvider} from "@/context/SearchCache.tsx";
 
 export default function App() {
-    return (
-        <SearchCacheProvider>
-            <PageTransition />
-        </SearchCacheProvider>
-    );
+    return <SearchCacheProvider>
+        <HomePage/>
+    </SearchCacheProvider>;
 }
