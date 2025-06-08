@@ -44,11 +44,8 @@ export default function HomePage() {
     return (
         <div className="relative min-h-screen">
             {/* Search Grid */}
-            <div
-                className="max-w-6xl mx-auto p-4"
-                style={{ pointerEvents: selectedMap ? 'none' : 'auto' }}
-            >
-                <motion.h1 
+            <div className="max-w-6xl mx-auto p-4">
+                <motion.h1
                     initial={{ y: -20 }}
                     animate={{ y: 0 }}
                     className="text-2xl mb-6 font-['Press_Start_2P'] text-center"
@@ -68,29 +65,27 @@ export default function HomePage() {
                     </div>
                 )}
                 {!isLoading && !error && (
-                    <div 
-                        className="grid grid-cols-1 md:grid-cols-2 gap-4"
-                    >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {results.length === 0 && (
                             <div className="col-span-full text-center font-['Press_Start_2P'] py-8">
                                 No beatmaps found. Try refreshing the page.
                             </div>
                         )}
                         {results.map((map) => (
-                            <motion.button 
+                            <motion.button
                                 key={map.id}
                                 layoutId={`card-${map.id}`}
                                 onClick={() => handleCardClick(map)}
                                 whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.98 }}
-                                className="block w-full aspect-[32/9] border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] 
-                                         hover:translate-x-1 hover:translate-y-1 hover:shadow-none 
+                                className="block w-full aspect-[32/9] border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]
+                                         hover:translate-x-1 hover:translate-y-1 hover:shadow-none
                                          transition-all duration-100 cursor-pointer overflow-hidden relative text-left bg-white"
-                                style={{
-                                    willChange: selectedMap?.id === map.id ? 'transform' : 'auto'
-                                }}
                                 transition={{
-                                    layout: { duration: 0.6, ease: [0.25, 0.1, 0.25, 1] }
+                                    layout: {
+                                        duration: 0.4,
+                                        ease: [0.25, 0.1, 0.25, 1]
+                                    }
                                 }}
                             >
                                 <motion.img
@@ -100,12 +95,12 @@ export default function HomePage() {
                                     className="absolute inset-0 w-full h-full object-cover"
                                 />
 
-                                <motion.div 
+                                <motion.div
                                     layoutId={`overlay-${map.id}`}
                                     className="absolute inset-0 bg-black/60"
                                 />
 
-                                <motion.div 
+                                <motion.div
                                     layoutId={`content-${map.id}`}
                                     className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-4"
                                 >
@@ -126,18 +121,8 @@ export default function HomePage() {
             </div>
 
             {/* Song Page Overlay */}
-            <AnimatePresence mode="wait">
-                {selectedMap && (
-                    <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.4 }}
-                        className="fixed inset-0 z-10"
-                    >
-                        <SongPage />
-                    </motion.div>
-                )}
+            <AnimatePresence>
+                {selectedMap && <SongPage />}
             </AnimatePresence>
         </div>
     );
