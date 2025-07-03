@@ -108,9 +108,42 @@ export default function HomePage() {
                                         <h2 className="text-xl mb-1 line-clamp-1">{map.song}</h2>
                                         <p className="text-sm">by {map.artist}</p>
                                         <p className="text-sm">Charter: {map.charter}</p>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-sm">Upvotes:</span>
-                                            <span className="text-base">{map.upvotes}</span>
+                                    </div>
+                                    <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                                        <div className="group relative">
+                                            <a
+                                                href={`https://beatmap-browser.s3.amazonaws.com/${map.id}.zip`}
+                                                className="inline-flex items-center justify-center p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                </svg>
+                                            </a>
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1 bg-black/90 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap font-['Press_Start_2P'] pointer-events-none">
+                                                Download Map
+                                                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-black/90 rotate-45"></div>
+                                            </div>
+                                        </div>
+                                        <div className="group relative">
+                                            <button
+                                                className="inline-flex items-center justify-center p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    // TODO: Implement one-click install
+                                                }}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </button>
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1 bg-black/90 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap font-['Press_Start_2P'] pointer-events-none">
+                                                One-Click Install
+                                                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-black/90 rotate-45"></div>
+                                            </div>
+                                        </div>
+                                        <div className="bg-black/40 backdrop-blur-sm px-3 py-1 rounded-full">
+                                            <span className="text-sm">↑ {map.upvotes}</span>
                                         </div>
                                     </div>
                                 </motion.div>

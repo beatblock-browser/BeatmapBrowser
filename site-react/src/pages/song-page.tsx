@@ -4,12 +4,16 @@ import { useStore } from "@/lib/store";
 import default_image from './../public/beatblocks.jpg';
 
 export default function SongPage() {
-    const { selectedMap, setSelectedMap } = useStore();
+    const { selectedMap, setSelectedMap, upvoteMap, unvoteMap } = useStore();
 
     if (!selectedMap) return null;
 
     const handleBack = () => {
         setSelectedMap(null);
+    };
+
+    const handleUpvote = async () => {
+        await upvoteMap(selectedMap.id);
     };
 
     return (
@@ -86,10 +90,6 @@ export default function SongPage() {
                         <h1 className="text-6xl mb-2 line-clamp-1">{selectedMap.song}</h1>
                         <p className="text-2xl mb-1">by {selectedMap.artist}</p>
                         <p className="text-2xl">Charter: {selectedMap.charter}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                            <span className="text-xl">Upvotes:</span>
-                            <span className="text-3xl">{selectedMap.upvotes}</span>
-                        </div>
                     </div>
                 </motion.div>
             </motion.div>
@@ -113,9 +113,12 @@ export default function SongPage() {
                             <div className="border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 bg-white">
                                 <h2 className="text-xl font-['Press_Start_2P'] mb-4">Details</h2>
                                 <div className="space-y-2">
-                                    <p className="font-['Press_Start_2P'] text-sm">
+                                    <button 
+                                        onClick={handleUpvote}
+                                        className="w-full text-left font-['Press_Start_2P'] text-sm hover:bg-gray-100 p-2 rounded transition-colors"
+                                    >
                                         <span className="text-gray-600">Upvotes:</span> {selectedMap.upvotes}
-                                    </p>
+                                    </button>
                                     {selectedMap.difficulties && (
                                         <p className="font-['Press_Start_2P'] text-sm">
                                             <span className="text-gray-600">Difficulties:</span> {selectedMap.difficulties.join(", ")}
