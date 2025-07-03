@@ -4,9 +4,9 @@ import { SearchRequest, SearchResult } from "@/schema/search";
 import { BeatMap } from "@/schema";
 import { useSearchCache } from "@/context/SearchCache";
 import { useStore } from "@/lib/store";
+import SongPage from "./song-page";
 // @ts-ignore IDE doesn't recognize image imports.
 import default_image from './../public/beatblocks.jpg';
-import SongPage from "./song-page";
 
 export default function HomePage() {
     const { results, setResults, isLoading, setIsLoading } = useSearchCache();
