@@ -1,22 +1,45 @@
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
 import { BeatMap } from "@/schema";
 import { useStore } from "@/lib/store";
-// @ts-ignore IDE doesn't recognize image imports.
+// @ts-ignore
 import default_image from './../public/beatblocks.jpg';
 
-export default function SongPage() {
+interface SongPageProps {
+    skipEntranceAnimation?: boolean;
+}
+
+export default function SongPage({ skipEntranceAnimation = false }: SongPageProps) {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { selectedMap, setSelectedMap, upvoteMap, unvoteMap } = useStore();
     const [fetchedMap, setFetchedMap] = useState<BeatMap | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isVisible, setIsVisible] = useState(skipEntranceAnimation);
+    const [showBackButton, setShowBackButton] = useState(!skipEntranceAnimation);
 
     // Determine which map to use and whether we're in overlay mode
     const isOverlayMode = !!selectedMap;
     const currentMap = selectedMap || fetchedMap;
+
+    useEffect(() => {
+        // Trigger animation after component mounts, unless skipping entrance animation
+        if (!skipEntranceAnimation) {
+            setIsVisible(true);
+        } else {
+            // When animating from card, hide back button initially
+            setShowBackButton(false);
+            setIsVisible(true);
+            
+            // Show back button after a brief delay for the card animation to complete
+            const showTimer = setTimeout(() => {
+                setShowBackButton(true);
+            }, 600);
+            
+            return () => clearTimeout(showTimer);
+        }
+    }, [skipEntranceAnimation]);
 
     useEffect(() => {
         // If we have selectedMap from store, don't fetch
@@ -53,13 +76,17 @@ export default function SongPage() {
     }, [id, selectedMap]);
 
     const handleBack = () => {
-        if (isOverlayMode) {
-            // In overlay mode, close the overlay
-            setSelectedMap(null);
-        } else {
-            // In URL mode, navigate back to home
-            navigate('/');
-        }
+        setIsVisible(false);
+        setShowBackButton(false);
+        setTimeout(() => {
+            if (isOverlayMode) {
+                // In overlay mode, close the overlay
+                setSelectedMap(null);
+            } else {
+                // In URL mode, navigate back to home
+                navigate('/');
+            }
+        }, skipEntranceAnimation ? 0 : 400);
     };
 
     const handleUpvote = async () => {
@@ -105,94 +132,66 @@ export default function SongPage() {
     }
 
     return (
-        <motion.div
-            className="fixed inset-0 z-10"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+        <div
+            className={`fixed inset-0 z-40 transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
         >
             {/* Background Panel */}
-            <motion.div
-                className="absolute inset-0 bg-white"
-                initial={{ y: "-100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "-100%" }}
-                transition={{
-                    duration: 0.4,
-                    ease: [0.25, 0.1, 0.25, 1]
-                }}
+            <div
+                className={`absolute inset-0 bg-white transform transition-transform ${
+                    skipEntranceAnimation ? 'duration-0' : 'duration-400'
+                } ease-out ${
+                    isVisible ? 'translate-y-0' : '-translate-y-full'
+                }`}
             />
 
             {/* Banner - Fixed at top */}
-            <motion.div
-                layoutId={`card-${currentMap.id}`}
-                className="absolute top-0 left-0 right-0 overflow-hidden"
+            <div
+                className={`absolute top-0 left-0 right-0 overflow-hidden transition-all duration-150 ease-out ${
+                    isVisible ? 'opacity-100' : 'opacity-0'
+                }`}
                 style={{
                     height: 'calc(100vw * 9 / 32)',
                     maxHeight: '320px'
                 }}
-                transition={{
-                    layout: {
-                        duration: 0.4,
-                        ease: [0.25, 0.1, 0.25, 1]
-                    }
-                }}
             >
-                <motion.button
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    transition={{ duration: 0.2, delay: 0.2 }}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    className="absolute top-4 left-4 z-30 text-white p-2 bg-black/20 rounded-full backdrop-blur-sm"
-                    onClick={handleBack}
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                </motion.button>
-
-                <motion.div
-                    layoutId={`image-${currentMap.id}`}
-                    className="absolute inset-0"
-                >
+                <div className="absolute inset-0">
                     <img
                         src={currentMap.image ? `https://beatmap-browser.s3.amazonaws.com/${currentMap.id}.png` : default_image}
                         alt={currentMap.song}
                         className="w-full h-full object-cover"
                     />
-                </motion.div>
+                </div>
 
-                <motion.div
-                    layoutId={`overlay-${currentMap.id}`}
-                    className="absolute inset-0 bg-black/60"
-                />
+                <div className="absolute inset-0 bg-black/60" />
 
-                <motion.div
-                    layoutId={`content-${currentMap.id}`}
-                    className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6"
-                >
+                <div className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6">
                     <div className="flex-1 min-w-0">
                         <h1 className="text-4xl mb-2 line-clamp-1">{currentMap.song}</h1>
                         <p className="text-xl mb-1">by {currentMap.artist}</p>
                         <p className="text-xl">Charter: {currentMap.charter}</p>
                     </div>
-                </motion.div>
-            </motion.div>
+                </div>
+            </div>
+
+            {/* Back Button - Positioned after banner to appear on top */}
+            <button
+                className={`absolute top-4 left-4 z-50 text-white p-2 bg-black/20 rounded-full backdrop-blur-sm 
+                           transform transition-all duration-300 hover:scale-110 active:scale-90 
+                           ${showBackButton ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
+                onClick={handleBack}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+            </button>
 
             {/* Main Content - Scrollable below banner */}
-            <motion.div
-                initial={{ opacity: 0, y: 50 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 50 }}
-                transition={{
-                    delay: 0.3,
-                    duration: 0.3,
-                    ease: "easeOut"
-                }}
-                className="absolute top-0 left-0 right-0 bottom-0 overflow-y-auto pt-[320px]"
+            <div
+                className={`absolute top-0 left-0 right-0 bottom-0 overflow-y-auto pt-[320px] 
+                           transform transition-all duration-300 ease-out ${
+                               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
+                           }`}
+                style={{ transitionDelay: isVisible && !skipEntranceAnimation ? '300ms' : '0ms' }}
             >
                 <div className="max-w-6xl mx-auto p-4 pb-2">
                     <div className="flex gap-6">
@@ -246,7 +245,7 @@ export default function SongPage() {
                         </div>
                     </div>
                 </div>
-            </motion.div>
-        </motion.div>
+            </div>
+        </div>
     );
 }

@@ -1,17 +1,21 @@
-import React, { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useEffect, useState, useRef } from "react";
 import { SearchRequest, SearchResult } from "@/schema/search";
 import { BeatMap } from "@/schema";
 import { useSearchCache } from "@/context/SearchCache";
 import { useStore } from "@/lib/store";
 import SongPage from "./song-page";
-// @ts-ignore IDE doesn't recognize image imports.
+// @ts-ignore
 import default_image from './../public/beatblocks.jpg';
 
 export default function HomePage() {
     const { results, setResults, isLoading, setIsLoading } = useSearchCache();
     const { selectedMap, setSelectedMap } = useStore();
     const [error, setError] = useState<string | null>(null);
+    const [titleVisible, setTitleVisible] = useState(false);
+    const [transitioningCard, setTransitioningCard] = useState<string | null>(null);
+    const [showSongPage, setShowSongPage] = useState(false);
+    const [cardTransformed, setCardTransformed] = useState(false);
+    const cardRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
 
     useEffect(() => {
         const fetchResults = async () => {
@@ -37,6 +41,11 @@ export default function HomePage() {
         fetchResults();
     }, [setResults, setIsLoading]);
 
+    useEffect(() => {
+        // Trigger title animation after component mounts
+        setTitleVisible(true);
+    }, []);
+
     // Handle body overflow when overlay is open
     useEffect(() => {
         if (selectedMap) {
@@ -51,21 +60,117 @@ export default function HomePage() {
         };
     }, [selectedMap]);
 
+    // Handle card transition animation
+    useEffect(() => {
+        if (transitioningCard && selectedMap) {
+            const cardElement = cardRefs.current[transitioningCard];
+            if (cardElement) {
+                // Get the card's current position
+                const rect = cardElement.getBoundingClientRect();
+                const viewportWidth = window.innerWidth;
+                const bannerHeight = Math.min(viewportWidth * 9 / 32, 320);
+                
+                // Apply initial position
+                cardElement.style.position = 'fixed';
+                cardElement.style.zIndex = '50';
+                cardElement.style.top = `${rect.top}px`;
+                cardElement.style.left = `${rect.left}px`;
+                cardElement.style.width = `${rect.width}px`;
+                cardElement.style.height = `${rect.height}px`;
+                cardElement.style.transformOrigin = 'top left';
+                cardElement.style.transition = 'transform 400ms ease-out';
+                
+                // Trigger the transform on next frame
+                requestAnimationFrame(() => {
+                    const scaleX = viewportWidth / rect.width;
+                    const scaleY = bannerHeight / rect.height;
+                    const translateX = -rect.left;
+                    const translateY = -rect.top;
+                    
+                    cardElement.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
+                    setCardTransformed(true);
+                });
+            }
+        }
+    }, [transitioningCard, selectedMap]);
+
+    // Handle song page visibility based on selectedMap
+    useEffect(() => {
+        if (selectedMap && !showSongPage && cardTransformed) {
+            // Card transition completes, show song page
+            const timer = setTimeout(() => {
+                setShowSongPage(true);
+                // Reset all card styles
+                Object.values(cardRefs.current).forEach(card => {
+                    if (card) {
+                        card.style.position = '';
+                        card.style.zIndex = '';
+                        card.style.top = '';
+                        card.style.left = '';
+                        card.style.width = '';
+                        card.style.height = '';
+                        card.style.transform = '';
+                        card.style.transformOrigin = '';
+                        card.style.transition = '';
+                    }
+                });
+            }, 400);
+            return () => clearTimeout(timer);
+        } else if (!selectedMap && showSongPage) {
+            // Hide song page and reset transition state
+            setShowSongPage(false);
+            setTransitioningCard(null);
+            setCardTransformed(false);
+            
+            // Reset all card styles
+            Object.values(cardRefs.current).forEach(card => {
+                if (card) {
+                    card.style.position = '';
+                    card.style.zIndex = '';
+                    card.style.top = '';
+                    card.style.left = '';
+                    card.style.width = '';
+                    card.style.height = '';
+                    card.style.transform = '';
+                    card.style.transformOrigin = '';
+                    card.style.transition = '';
+                }
+            });
+        }
+    }, [selectedMap, showSongPage, cardTransformed]);
+
     const handleCardClick = (map: BeatMap) => {
+        if (transitioningCard) return; // Prevent multiple clicks during transition
+        
+        setTransitioningCard(map.id);
         setSelectedMap(map);
+    };
+
+    const getCardClassName = (mapId: string) => {
+        const baseClass = "block w-full aspect-[32/9] border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer overflow-hidden relative text-left bg-white";
+        
+        if (transitioningCard === mapId) {
+            return `${baseClass} transform-gpu`;
+        }
+        
+        if (transitioningCard && transitioningCard !== mapId) {
+            return `${baseClass} opacity-0 transition-opacity duration-200`;
+        }
+        
+        return `${baseClass} transition-all duration-100 hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:scale-[1.02] active:scale-[0.98]`;
     };
 
     return (
         <div className="relative min-h-screen">
             {/* Search Grid */}
             <div className="max-w-6xl mx-auto p-4">
-                <motion.h1
-                    initial={{ y: -20 }}
-                    animate={{ y: 0 }}
-                    className="text-2xl mb-6 font-['Press_Start_2P'] text-center"
+                <h1
+                    className={`text-2xl mb-6 font-['Press_Start_2P'] text-center transform transition-all duration-300 ${
+                        titleVisible ? 'translate-y-0 opacity-100' : '-translate-y-5 opacity-100'
+                    } ${transitioningCard ? 'opacity-0' : ''}`}
                 >
                     Beatmap Browser
-                </motion.h1>
+                </h1>
                 {isLoading && (
                     <div className="flex flex-col items-center justify-center py-8">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
@@ -86,44 +191,29 @@ export default function HomePage() {
                             </div>
                         )}
                         {results.map((map) => (
-                            <motion.button
+                            <button
                                 key={map.id}
-                                layoutId={`card-${map.id}`}
+                                ref={(el) => { cardRefs.current[map.id] = el; }}
                                 onClick={() => handleCardClick(map)}
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                className="block w-full aspect-[32/9] border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]
-                                         hover:translate-x-1 hover:translate-y-1 hover:shadow-none
-                                         transition-all duration-100 cursor-pointer overflow-hidden relative text-left bg-white"
-                                transition={{
-                                    layout: {
-                                        duration: 0.4,
-                                        ease: [0.25, 0.1, 0.25, 1]
-                                    }
-                                }}
+                                className={getCardClassName(map.id)}
                             >
-                                <motion.img
-                                    layoutId={`image-${map.id}`}
+                                <img
                                     src={map.image ? `https://beatmap-browser.s3.amazonaws.com/${map.id}.png` : default_image}
                                     alt={map.song}
                                     className="absolute inset-0 w-full h-full object-cover"
                                 />
 
-                                <motion.div
-                                    layoutId={`overlay-${map.id}`}
-                                    className="absolute inset-0 bg-black/60"
-                                />
+                                <div className="absolute inset-0 bg-black/60" />
 
-                                <motion.div
-                                    layoutId={`content-${map.id}`}
-                                    className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-4"
-                                >
+                                <div className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-4">
                                     <div className="flex-1 min-w-0">
                                         <h2 className="text-xl mb-1 line-clamp-1">{map.song}</h2>
                                         <p className="text-sm">by {map.artist}</p>
                                         <p className="text-sm">Charter: {map.charter}</p>
                                     </div>
-                                    <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                                    <div className={`absolute bottom-4 right-4 flex items-center gap-2 transition-opacity duration-200 ${
+                                        transitioningCard === map.id ? 'opacity-0' : 'opacity-100'
+                                    }`}>
                                         <div className="group relative">
                                             <a
                                                 href={`https://beatmap-browser.s3.amazonaws.com/${map.id}.zip`}
@@ -160,17 +250,15 @@ export default function HomePage() {
                                             <span className="text-sm">↑ {map.upvotes}</span>
                                         </div>
                                     </div>
-                                </motion.div>
-                            </motion.button>
+                                </div>
+                            </button>
                         ))}
                     </div>
                 )}
             </div>
 
             {/* Song Page Overlay */}
-            <AnimatePresence>
-                {selectedMap && <SongPage />}
-            </AnimatePresence>
+            {showSongPage && <SongPage skipEntranceAnimation={!!transitioningCard} />}
         </div>
     );
 }
