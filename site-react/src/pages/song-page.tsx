@@ -130,7 +130,7 @@ export default function SongPage() {
                 className="absolute top-0 left-0 right-0 overflow-hidden"
                 style={{
                     height: 'calc(100vw * 9 / 32)',
-                    maxHeight: '400px'
+                    maxHeight: '320px'
                 }}
                 transition={{
                     layout: {
@@ -172,12 +172,12 @@ export default function SongPage() {
 
                 <motion.div
                     layoutId={`content-${currentMap.id}`}
-                    className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-8"
+                    className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6"
                 >
                     <div className="flex-1 min-w-0">
-                        <h1 className="text-6xl mb-2 line-clamp-1">{currentMap.song}</h1>
-                        <p className="text-2xl mb-1">by {currentMap.artist}</p>
-                        <p className="text-2xl">Charter: {currentMap.charter}</p>
+                        <h1 className="text-4xl mb-2 line-clamp-1">{currentMap.song}</h1>
+                        <p className="text-xl mb-1">by {currentMap.artist}</p>
+                        <p className="text-xl">Charter: {currentMap.charter}</p>
                     </div>
                 </motion.div>
             </motion.div>
@@ -192,9 +192,9 @@ export default function SongPage() {
                     duration: 0.3,
                     ease: "easeOut"
                 }}
-                className="absolute top-0 left-0 right-0 bottom-0 overflow-y-auto pt-[400px]"
+                className="absolute top-0 left-0 right-0 bottom-0 overflow-y-auto pt-[320px]"
             >
-                <div className="max-w-6xl mx-auto p-4">
+                <div className="max-w-6xl mx-auto p-4 pb-2">
                     <div className="flex gap-6">
                         {/* Left Sidebar */}
                         <div className="w-64 flex-shrink-0">

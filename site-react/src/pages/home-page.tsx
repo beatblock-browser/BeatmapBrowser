@@ -37,6 +37,20 @@ export default function HomePage() {
         fetchResults();
     }, [setResults, setIsLoading]);
 
+    // Handle body overflow when overlay is open
+    useEffect(() => {
+        if (selectedMap) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'auto';
+        }
+
+        // Cleanup function to restore scroll when component unmounts
+        return () => {
+            document.body.style.overflow = 'auto';
+        };
+    }, [selectedMap]);
+
     const handleCardClick = (map: BeatMap) => {
         setSelectedMap(map);
     };
