@@ -7,9 +7,10 @@ import default_image from './../public/beatblocks.jpg';
 
 interface SongPageProps {
     skipEntranceAnimation?: boolean;
+    onClose?: () => void;
 }
 
-export default function SongPage({ skipEntranceAnimation = false }: SongPageProps) {
+export default function SongPage({ skipEntranceAnimation = false, onClose }: SongPageProps) {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { selectedMap, setSelectedMap, upvoteMap, unvoteMap } = useStore();
@@ -76,17 +77,23 @@ export default function SongPage({ skipEntranceAnimation = false }: SongPageProp
     }, [id, selectedMap]);
 
     const handleBack = () => {
-        setIsVisible(false);
-        setShowBackButton(false);
-        setTimeout(() => {
-            if (isOverlayMode) {
-                // In overlay mode, close the overlay
-                setSelectedMap(null);
-            } else {
-                // In URL mode, navigate back to home
-                navigate('/');
-            }
-        }, skipEntranceAnimation ? 0 : 400);
+        if (isOverlayMode && onClose) {
+            // In overlay mode with reverse animation, start immediately without hiding
+            onClose();
+        } else {
+            // For other cases, use the original hide-then-navigate approach
+            setIsVisible(false);
+            setShowBackButton(false);
+            setTimeout(() => {
+                if (isOverlayMode) {
+                    // In overlay mode without reverse animation, close directly
+                    setSelectedMap(null);
+                } else {
+                    // In URL mode, navigate back to home
+                    navigate('/');
+                }
+            }, skipEntranceAnimation ? 0 : 400);
+        }
     };
 
     const handleUpvote = async () => {
@@ -187,11 +194,14 @@ export default function SongPage({ skipEntranceAnimation = false }: SongPageProp
 
             {/* Main Content - Scrollable below banner */}
             <div
-                className={`absolute top-0 left-0 right-0 bottom-0 overflow-y-auto pt-[320px] 
+                className={`absolute top-0 left-0 right-0 bottom-0 overflow-y-auto 
                            transform transition-all duration-300 ease-out ${
                                isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
                            }`}
-                style={{ transitionDelay: isVisible && !skipEntranceAnimation ? '300ms' : '0ms' }}
+                style={{ 
+                    paddingTop: `min(calc(100vw * 9 / 32), 320px)`,
+                    transitionDelay: isVisible && !skipEntranceAnimation ? '300ms' : '0ms' 
+                }}
             >
                 <div className="max-w-6xl mx-auto p-4 pb-2">
                     <div className="flex gap-6">

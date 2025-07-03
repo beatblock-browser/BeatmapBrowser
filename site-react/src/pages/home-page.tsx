@@ -15,8 +15,10 @@ export default function HomePage() {
     const [transitioningCard, setTransitioningCard] = useState<string | null>(null);
     const [showSongPage, setShowSongPage] = useState(false);
     const [cardTransformed, setCardTransformed] = useState(false);
+    const [isReverseAnimation, setIsReverseAnimation] = useState(false);
     const cardRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
     const textRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+    const originalCardPosition = useRef<{ [key: string]: DOMRect }>({});
 
     useEffect(() => {
         const fetchResults = async () => {
@@ -63,28 +65,45 @@ export default function HomePage() {
 
     // Handle card transition animation
     useEffect(() => {
-        if (transitioningCard && selectedMap) {
-            const cardElement = cardRefs.current[transitioningCard];
-            const textElement = textRefs.current[transitioningCard];
-            if (cardElement && textElement) {
-                // Get the card's current position
-                const rect = cardElement.getBoundingClientRect();
+        if (transitioningCard && selectedMap && !isReverseAnimation) {
+            const originalCardElement = cardRefs.current[transitioningCard];
+            const selectedMapData = results.find(map => map.id === transitioningCard);
+            
+            if (originalCardElement && selectedMapData) {
+                // Get the card's current position and store it for reverse animation
+                const rect = originalCardElement.getBoundingClientRect();
+                originalCardPosition.current[transitioningCard] = rect;
+                
+                // Create a clone of the card for animation
+                const animatedCard = originalCardElement.cloneNode(true) as HTMLButtonElement;
+                const animatedText = animatedCard.querySelector('[class*="absolute inset-0 flex"]') as HTMLDivElement;
+                
+                // Remove any refs and event listeners from the clone
+                animatedCard.removeAttribute('data-*');
+                animatedCard.onclick = null;
+                
+                // Add the animated card to the document
+                document.body.appendChild(animatedCard);
+                
                 const viewportWidth = window.innerWidth;
                 const bannerHeight = Math.min(viewportWidth * 9 / 32, 320);
                 
-                // Apply initial position to card
-                cardElement.style.position = 'fixed';
-                cardElement.style.zIndex = '50';
-                cardElement.style.top = `${rect.top}px`;
-                cardElement.style.left = `${rect.left}px`;
-                cardElement.style.width = `${rect.width}px`;
-                cardElement.style.height = `${rect.height}px`;
-                cardElement.style.transformOrigin = 'top left';
-                cardElement.style.transition = 'transform 400ms ease-out';
+                // Position clone exactly at original card location
+                animatedCard.style.position = 'fixed';
+                animatedCard.style.zIndex = '50';
+                animatedCard.style.top = `${rect.top}px`;
+                animatedCard.style.left = `${rect.left}px`;
+                animatedCard.style.width = `${rect.width}px`;
+                animatedCard.style.height = `${rect.height}px`;
+                animatedCard.style.transformOrigin = 'top left';
+                animatedCard.style.transition = 'transform 400ms ease-out';
+                animatedCard.style.visibility = 'visible'; // Override any invisible class
+                animatedCard.style.opacity = '1'; // Ensure it's fully visible
                 
-                // Set up text for inverse scaling with left center origin to maintain left alignment and vertical centering
-                textElement.style.transformOrigin = 'left center';
-                textElement.style.transition = 'transform 400ms ease-out';
+                if (animatedText) {
+                    animatedText.style.transformOrigin = 'left center';
+                    animatedText.style.transition = 'transform 400ms ease-out';
+                }
                 
                 // Trigger the transforms on next frame
                 requestAnimationFrame(() => {
@@ -94,94 +113,151 @@ export default function HomePage() {
                     const scaleX = viewportWidth / rect.width;
                     const scaleY = bannerHeight / rect.height;
                     
-                    // Apply translation and scaling to card (this scales everything including image)
-                    cardElement.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
+                    // Apply translation and scaling to animated card
+                    animatedCard.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
                     
                     // Apply inverse scaling to text to keep it at original size
-                    // Now that card and banner both use p-6, positioning should align perfectly
-                    textElement.style.transform = `scale(${1/scaleX}, ${1/scaleY})`;
+                    if (animatedText) {
+                        animatedText.style.transform = `scale(${1/scaleX}, ${1/scaleY})`;
+                    }
                     
                     setCardTransformed(true);
                 });
             }
         }
-    }, [transitioningCard, selectedMap]);
+    }, [transitioningCard, selectedMap, isReverseAnimation, results]);
+
+    // Handle reverse animation when closing
+    useEffect(() => {
+        if (isReverseAnimation && transitioningCard) {
+            // Hide song page immediately to show home page underneath
+            setShowSongPage(false);
+            
+            const originalCardElement = cardRefs.current[transitioningCard];
+            const originalRect = originalCardPosition.current[transitioningCard];
+            const selectedMapData = results.find(map => map.id === transitioningCard);
+            
+            if (originalCardElement && originalRect && selectedMapData) {
+                // Create a clone of the card for animation instead of modifying the original
+                const animatedCard = originalCardElement.cloneNode(true) as HTMLButtonElement;
+                const animatedText = animatedCard.querySelector('[class*="absolute inset-0 flex"]') as HTMLDivElement;
+                
+                // Remove any refs and event listeners from the clone
+                animatedCard.removeAttribute('data-*');
+                animatedCard.onclick = null;
+                
+                // Add the animated card to the document
+                document.body.appendChild(animatedCard);
+                
+                // Position animated card exactly over the banner
+                const viewportWidth = window.innerWidth;
+                const bannerHeight = Math.min(viewportWidth * 9 / 32, 320);
+                
+                animatedCard.style.position = 'fixed';
+                animatedCard.style.zIndex = '60';
+                animatedCard.style.top = '0px';
+                animatedCard.style.left = '0px';
+                animatedCard.style.width = `${viewportWidth}px`;
+                animatedCard.style.height = `${bannerHeight}px`;
+                animatedCard.style.transformOrigin = 'top left';
+                animatedCard.style.transition = '';
+                animatedCard.style.transform = '';
+                
+                if (animatedText) {
+                    animatedText.style.transformOrigin = 'left center';
+                    animatedText.style.transition = '';
+                    animatedText.style.transform = '';
+                }
+                
+                // Start animation
+                requestAnimationFrame(() => {
+                    animatedCard.style.transition = 'transform 400ms ease-out';
+                    if (animatedText) {
+                        animatedText.style.transition = 'transform 400ms ease-out';
+                    }
+                    
+                    requestAnimationFrame(() => {
+                        // Animate back to original position
+                        const translateX = originalRect.left;
+                        const translateY = originalRect.top;
+                        const scaleBackX = originalRect.width / viewportWidth;
+                        const scaleBackY = originalRect.height / bannerHeight;
+                        
+                        animatedCard.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleBackX}, ${scaleBackY})`;
+                        if (animatedText) {
+                            animatedText.style.transform = `scale(${1/scaleBackX}, ${1/scaleBackY})`;
+                        }
+                        
+                        // After animation completes, clean up
+                        setTimeout(() => {
+                            // Remove the animated card
+                            if (animatedCard.parentNode) {
+                                animatedCard.parentNode.removeChild(animatedCard);
+                            }
+                            
+                            setSelectedMap(null);
+                            setTransitioningCard(null);
+                            setIsReverseAnimation(false);
+                            setCardTransformed(false);
+                        }, 400);
+                    });
+                });
+            }
+        }
+    }, [isReverseAnimation, transitioningCard, results]);
 
     // Handle song page visibility based on selectedMap
     useEffect(() => {
-        if (selectedMap && !showSongPage && cardTransformed) {
-            // Card transition completes, show song page
+        if (selectedMap && !showSongPage && cardTransformed && !isReverseAnimation) {
+            // Card transition completes, show song page (only if not reverse animating)
             const timer = setTimeout(() => {
                 setShowSongPage(true);
-                // Reset all card and text styles
-                Object.values(cardRefs.current).forEach(card => {
-                    if (card) {
-                        card.style.position = '';
-                        card.style.zIndex = '';
-                        card.style.top = '';
-                        card.style.left = '';
-                        card.style.width = '';
-                        card.style.height = '';
-                        card.style.transform = '';
-                        card.style.transformOrigin = '';
-                        card.style.transition = '';
-                    }
-                });
-                Object.values(textRefs.current).forEach(text => {
-                    if (text) {
-                        text.style.transform = '';
-                        text.style.transformOrigin = '';
-                        text.style.transition = '';
+                
+                // Clean up any animated clones from forward animation
+                const animatedClones = document.querySelectorAll('button[style*="position: fixed"][style*="z-index: 50"]');
+                animatedClones.forEach(clone => {
+                    if (clone.parentNode) {
+                        clone.parentNode.removeChild(clone);
                     }
                 });
             }, 400);
             return () => clearTimeout(timer);
-        } else if (!selectedMap && showSongPage) {
-            // Hide song page and reset transition state
+        } else if (!selectedMap && showSongPage && !isReverseAnimation) {
+            // Hide song page and reset transition state (only if not doing reverse animation)
             setShowSongPage(false);
             setTransitioningCard(null);
             setCardTransformed(false);
-            
-            // Reset all card and text styles
-            Object.values(cardRefs.current).forEach(card => {
-                if (card) {
-                    card.style.position = '';
-                    card.style.zIndex = '';
-                    card.style.top = '';
-                    card.style.left = '';
-                    card.style.width = '';
-                    card.style.height = '';
-                    card.style.transform = '';
-                    card.style.transformOrigin = '';
-                    card.style.transition = '';
-                }
-            });
-            Object.values(textRefs.current).forEach(text => {
-                if (text) {
-                    text.style.transform = '';
-                    text.style.transformOrigin = '';
-                    text.style.transition = '';
-                }
-            });
         }
-    }, [selectedMap, showSongPage, cardTransformed]);
+    }, [selectedMap, showSongPage, cardTransformed, isReverseAnimation]);
 
     const handleCardClick = (map: BeatMap) => {
-        if (transitioningCard) return; // Prevent multiple clicks during transition
+        if (transitioningCard || isReverseAnimation) return; // Prevent clicks during any animation
         
         setTransitioningCard(map.id);
         setSelectedMap(map);
+    };
+
+    const handleCloseSongPage = () => {
+        if (selectedMap && transitioningCard) {
+            // Start reverse animation
+            setIsReverseAnimation(true);
+        } else {
+            // Fallback for direct URL access
+            setSelectedMap(null);
+        }
     };
 
     const getCardClassName = (mapId: string) => {
         const baseClass = "block w-full aspect-[32/9] border border-black cursor-pointer overflow-hidden relative text-left bg-white";
         const shadowClass = "shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]";
         
-        if (transitioningCard === mapId) {
-            return `${baseClass} transform-gpu`;
+        // Hide the transitioning card during forward animation (clone handles the animation)
+        if (transitioningCard === mapId && !isReverseAnimation) {
+            return `${baseClass} transform-gpu invisible`;
         }
         
-        if (transitioningCard && transitioningCard !== mapId) {
+        // Hide other cards during forward animation only
+        if (transitioningCard && transitioningCard !== mapId && !isReverseAnimation) {
             return `${baseClass} ${shadowClass} opacity-0 transition-opacity duration-200`;
         }
         
@@ -195,7 +271,7 @@ export default function HomePage() {
                 <h1
                     className={`text-2xl mb-6 font-['Press_Start_2P'] text-center transform transition-all duration-300 ${
                         titleVisible ? 'translate-y-0 opacity-100' : '-translate-y-5 opacity-100'
-                    } ${transitioningCard ? 'opacity-0' : ''}`}
+                    } ${transitioningCard && !isReverseAnimation ? 'opacity-0' : ''}`}
                 >
                     Beatmap Browser
                 </h1>
@@ -289,7 +365,7 @@ export default function HomePage() {
             </div>
 
             {/* Song Page Overlay */}
-            {showSongPage && <SongPage skipEntranceAnimation={!!transitioningCard} />}
+            {showSongPage && <SongPage skipEntranceAnimation={!!transitioningCard} onClose={handleCloseSongPage} />}
         </div>
     );
 }
