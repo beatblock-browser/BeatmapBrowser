@@ -16,6 +16,7 @@ export default function HomePage() {
     const [showSongPage, setShowSongPage] = useState(false);
     const [cardTransformed, setCardTransformed] = useState(false);
     const cardRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
+    const textRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
     useEffect(() => {
         const fetchResults = async () => {
@@ -64,13 +65,14 @@ export default function HomePage() {
     useEffect(() => {
         if (transitioningCard && selectedMap) {
             const cardElement = cardRefs.current[transitioningCard];
-            if (cardElement) {
+            const textElement = textRefs.current[transitioningCard];
+            if (cardElement && textElement) {
                 // Get the card's current position
                 const rect = cardElement.getBoundingClientRect();
                 const viewportWidth = window.innerWidth;
                 const bannerHeight = Math.min(viewportWidth * 9 / 32, 320);
                 
-                // Apply initial position
+                // Apply initial position to card
                 cardElement.style.position = 'fixed';
                 cardElement.style.zIndex = '50';
                 cardElement.style.top = `${rect.top}px`;
@@ -80,14 +82,25 @@ export default function HomePage() {
                 cardElement.style.transformOrigin = 'top left';
                 cardElement.style.transition = 'transform 400ms ease-out';
                 
-                // Trigger the transform on next frame
+                // Set up text for inverse scaling with left center origin to maintain left alignment and vertical centering
+                textElement.style.transformOrigin = 'left center';
+                textElement.style.transition = 'transform 400ms ease-out';
+                
+                // Trigger the transforms on next frame
                 requestAnimationFrame(() => {
-                    const scaleX = viewportWidth / rect.width;
-                    const scaleY = bannerHeight / rect.height;
+                    // Calculate translation and scaling for card
                     const translateX = -rect.left;
                     const translateY = -rect.top;
+                    const scaleX = viewportWidth / rect.width;
+                    const scaleY = bannerHeight / rect.height;
                     
+                    // Apply translation and scaling to card (this scales everything including image)
                     cardElement.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
+                    
+                    // Apply inverse scaling to text to keep it at original size
+                    // Now that card and banner both use p-6, positioning should align perfectly
+                    textElement.style.transform = `scale(${1/scaleX}, ${1/scaleY})`;
+                    
                     setCardTransformed(true);
                 });
             }
@@ -100,7 +113,7 @@ export default function HomePage() {
             // Card transition completes, show song page
             const timer = setTimeout(() => {
                 setShowSongPage(true);
-                // Reset all card styles
+                // Reset all card and text styles
                 Object.values(cardRefs.current).forEach(card => {
                     if (card) {
                         card.style.position = '';
@@ -114,6 +127,13 @@ export default function HomePage() {
                         card.style.transition = '';
                     }
                 });
+                Object.values(textRefs.current).forEach(text => {
+                    if (text) {
+                        text.style.transform = '';
+                        text.style.transformOrigin = '';
+                        text.style.transition = '';
+                    }
+                });
             }, 400);
             return () => clearTimeout(timer);
         } else if (!selectedMap && showSongPage) {
@@ -122,7 +142,7 @@ export default function HomePage() {
             setTransitioningCard(null);
             setCardTransformed(false);
             
-            // Reset all card styles
+            // Reset all card and text styles
             Object.values(cardRefs.current).forEach(card => {
                 if (card) {
                     card.style.position = '';
@@ -136,6 +156,13 @@ export default function HomePage() {
                     card.style.transition = '';
                 }
             });
+            Object.values(textRefs.current).forEach(text => {
+                if (text) {
+                    text.style.transform = '';
+                    text.style.transformOrigin = '';
+                    text.style.transition = '';
+                }
+            });
         }
     }, [selectedMap, showSongPage, cardTransformed]);
 
@@ -147,17 +174,18 @@ export default function HomePage() {
     };
 
     const getCardClassName = (mapId: string) => {
-        const baseClass = "block w-full aspect-[32/9] border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer overflow-hidden relative text-left bg-white";
+        const baseClass = "block w-full aspect-[32/9] border border-black cursor-pointer overflow-hidden relative text-left bg-white";
+        const shadowClass = "shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]";
         
         if (transitioningCard === mapId) {
             return `${baseClass} transform-gpu`;
         }
         
         if (transitioningCard && transitioningCard !== mapId) {
-            return `${baseClass} opacity-0 transition-opacity duration-200`;
+            return `${baseClass} ${shadowClass} opacity-0 transition-opacity duration-200`;
         }
         
-        return `${baseClass} transition-all duration-100 hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:scale-[1.02] active:scale-[0.98]`;
+        return `${baseClass} ${shadowClass} transition-all duration-100 hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:scale-[1.02] active:scale-[0.98]`;
     };
 
     return (
@@ -205,7 +233,10 @@ export default function HomePage() {
 
                                 <div className="absolute inset-0 bg-black/60" />
 
-                                <div className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-4">
+                                <div 
+                                    ref={(el) => { textRefs.current[map.id] = el; }}
+                                    className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6"
+                                >
                                     <div className="flex-1 min-w-0">
                                         <h2 className="text-xl mb-1 line-clamp-1">{map.song}</h2>
                                         <p className="text-sm">by {map.artist}</p>

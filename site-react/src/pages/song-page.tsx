@@ -166,9 +166,9 @@ export default function SongPage({ skipEntranceAnimation = false }: SongPageProp
 
                 <div className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6">
                     <div className="flex-1 min-w-0">
-                        <h1 className="text-4xl mb-2 line-clamp-1">{currentMap.song}</h1>
-                        <p className="text-xl mb-1">by {currentMap.artist}</p>
-                        <p className="text-xl">Charter: {currentMap.charter}</p>
+                        <h1 className="text-xl mb-1 line-clamp-1">{currentMap.song}</h1>
+                        <p className="text-sm">by {currentMap.artist}</p>
+                        <p className="text-sm">Charter: {currentMap.charter}</p>
                     </div>
                 </div>
             </div>
