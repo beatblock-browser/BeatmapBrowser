@@ -8,39 +8,62 @@ import default_image from './../public/beatblocks.jpg';
 interface SongPageProps {
     skipEntranceAnimation?: boolean;
     onClose?: () => void;
+    shouldFadeOut?: boolean;
 }
 
-export default function SongPage({ skipEntranceAnimation = false, onClose }: SongPageProps) {
+export default function SongPage({ skipEntranceAnimation = false, onClose, shouldFadeOut = false }: SongPageProps) {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { selectedMap, setSelectedMap, upvoteMap, unvoteMap } = useStore();
     const [fetchedMap, setFetchedMap] = useState<BeatMap | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [isVisible, setIsVisible] = useState(skipEntranceAnimation);
-    const [showBackButton, setShowBackButton] = useState(!skipEntranceAnimation);
+    const [isVisible, setIsVisible] = useState(false);
+    const [hasAnimatedCard, setHasAnimatedCard] = useState(false);
 
     // Determine which map to use and whether we're in overlay mode
     const isOverlayMode = !!selectedMap;
     const currentMap = selectedMap || fetchedMap;
 
     useEffect(() => {
-        // Trigger animation after component mounts, unless skipping entrance animation
-        if (!skipEntranceAnimation) {
+        // Fade in the song page after a shorter delay
+        const fadeInTimer = setTimeout(() => {
             setIsVisible(true);
-        } else {
-            // When animating from card, hide back button initially
-            setShowBackButton(false);
-            setIsVisible(true);
-            
-            // Show back button after a brief delay for the card animation to complete
-            const showTimer = setTimeout(() => {
-                setShowBackButton(true);
-            }, 600);
-            
-            return () => clearTimeout(showTimer);
-        }
+        }, skipEntranceAnimation ? 100 : 50); // Much shorter delay
+        
+        return () => clearTimeout(fadeInTimer);
     }, [skipEntranceAnimation]);
+
+    // Monitor for animated cards
+    useEffect(() => {
+        const checkAnimatedCard = () => {
+            const animatedCard = document.getElementById('animated-banner-card');
+            setHasAnimatedCard(!!animatedCard);
+        };
+        
+        // Check immediately
+        checkAnimatedCard();
+        
+        // Set up an interval to check periodically
+        const interval = setInterval(checkAnimatedCard, 100);
+        
+        return () => clearInterval(interval);
+    }, []);
+
+    // Handle fade out when requested
+    useEffect(() => {
+        if (shouldFadeOut && isVisible) {
+            setIsVisible(false);
+            // Notify parent after fade out completes
+            const fadeOutTimer = setTimeout(() => {
+                if (onClose) {
+                    onClose();
+                }
+            }, 300); // Match the fade out duration
+            
+            return () => clearTimeout(fadeOutTimer);
+        }
+    }, [shouldFadeOut, isVisible, onClose]);
 
     useEffect(() => {
         // If we have selectedMap from store, don't fetch
@@ -77,14 +100,16 @@ export default function SongPage({ skipEntranceAnimation = false, onClose }: Son
     }, [id, selectedMap]);
 
     const handleBack = () => {
-        if (isOverlayMode && onClose) {
-            // In overlay mode with reverse animation, start immediately without hiding
-            onClose();
-        } else {
-            // For other cases, use the original hide-then-navigate approach
-            setIsVisible(false);
-            setShowBackButton(false);
-            setTimeout(() => {
+        // Always fade out first
+        setIsVisible(false);
+        
+        // Then handle the actual back action after fade out completes
+        setTimeout(() => {
+            if (isOverlayMode && onClose) {
+                // In overlay mode with reverse animation
+                onClose();
+            } else {
+                // For other cases
                 if (isOverlayMode) {
                     // In overlay mode without reverse animation, close directly
                     setSelectedMap(null);
@@ -92,8 +117,8 @@ export default function SongPage({ skipEntranceAnimation = false, onClose }: Son
                     // In URL mode, navigate back to home
                     navigate('/');
                 }
-            }, skipEntranceAnimation ? 0 : 400);
-        }
+            }
+        }, 300); // Wait for fade out to complete
     };
 
     const handleUpvote = async () => {
@@ -140,22 +165,20 @@ export default function SongPage({ skipEntranceAnimation = false, onClose }: Son
 
     return (
         <div
-            className={`fixed inset-0 z-40 transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+            className={`fixed inset-0 z-[40] transition-opacity duration-300 ease-in-out ${isVisible ? 'opacity-100' : 'opacity-0'}`}
         >
             {/* Background Panel */}
             <div
-                className={`absolute inset-0 bg-white transform transition-transform ${
-                    skipEntranceAnimation ? 'duration-0' : 'duration-400'
-                } ease-out ${
-                    isVisible ? 'translate-y-0' : '-translate-y-full'
+                className={`absolute inset-0 bg-white transition-all duration-300 ease-in-out ${
+                    isVisible ? 'opacity-100' : 'opacity-0'
                 }`}
             />
 
-            {/* Banner - Fixed at top */}
+            {/* Banner - Fixed at top - Hidden when animated card is present */}
             <div
-                className={`absolute top-0 left-0 right-0 overflow-hidden transition-all duration-150 ease-out ${
+                className={`absolute top-0 left-0 right-0 overflow-hidden transition-all duration-300 ease-in-out ${
                     isVisible ? 'opacity-100' : 'opacity-0'
-                }`}
+                } ${hasAnimatedCard ? 'hidden' : ''}`}
                 style={{
                     height: 'calc(100vw * 9 / 32)',
                     maxHeight: '320px'
@@ -180,27 +203,14 @@ export default function SongPage({ skipEntranceAnimation = false, onClose }: Son
                 </div>
             </div>
 
-            {/* Back Button - Positioned after banner to appear on top */}
-            <button
-                className={`absolute top-4 left-4 z-50 text-white p-2 bg-black/20 rounded-full backdrop-blur-sm 
-                           transform transition-all duration-300 hover:scale-110 active:scale-90 
-                           ${showBackButton ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
-                onClick={handleBack}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-            </button>
-
             {/* Main Content - Scrollable below banner */}
             <div
                 className={`absolute top-0 left-0 right-0 bottom-0 overflow-y-auto 
-                           transform transition-all duration-300 ease-out ${
-                               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
+                           transition-all duration-300 ease-in-out ${
+                               isVisible ? 'opacity-100' : 'opacity-0'
                            }`}
                 style={{ 
-                    paddingTop: `min(calc(100vw * 9 / 32), 320px)`,
-                    transitionDelay: isVisible && !skipEntranceAnimation ? '300ms' : '0ms' 
+                    paddingTop: `min(calc(100vw * 9 / 32), 320px)`
                 }}
             >
                 <div className="max-w-6xl mx-auto p-4 pb-2">
