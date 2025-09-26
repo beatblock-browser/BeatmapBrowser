@@ -53,15 +53,53 @@ export default function HomePage() {
 
     // Handle body overflow when overlay is open
     useEffect(() => {
+        // Create or update the style element for hiding scrollbars
+        let styleElement = document.getElementById('hide-scrollbar-style') as HTMLStyleElement;
+        
         if (selectedMap) {
             document.body.style.overflow = 'hidden';
+            document.body.style.scrollbarWidth = 'none'; // Firefox
+            (document.body.style as any).msOverflowStyle = 'none'; // IE
+            
+            // Create style element to forcefully hide webkit scrollbars
+            if (!styleElement) {
+                styleElement = document.createElement('style');
+                styleElement.id = 'hide-scrollbar-style';
+                document.head.appendChild(styleElement);
+            }
+            
+            styleElement.textContent = `
+                html::-webkit-scrollbar, body::-webkit-scrollbar {
+                    display: none !important;
+                    width: 0 !important;
+                    height: 0 !important;
+                }
+                html, body {
+                    scrollbar-width: none !important;
+                    -ms-overflow-style: none !important;
+                }
+            `;
         } else {
-            document.body.style.overflow = 'auto';
+            document.body.style.overflow = 'overlay';
+            document.body.style.scrollbarWidth = 'thin'; // Firefox
+            (document.body.style as any).msOverflowStyle = ''; // IE
+            
+            // Remove the hide scrollbar style
+            if (styleElement) {
+                styleElement.remove();
+            }
         }
 
         // Cleanup function to restore scroll when component unmounts
         return () => {
-            document.body.style.overflow = 'auto';
+            document.body.style.overflow = 'overlay';
+            document.body.style.scrollbarWidth = 'thin';
+            (document.body.style as any).msOverflowStyle = '';
+            
+            const cleanupStyleElement = document.getElementById('hide-scrollbar-style');
+            if (cleanupStyleElement) {
+                cleanupStyleElement.remove();
+            }
         };
     }, [selectedMap]);
 
@@ -97,7 +135,6 @@ export default function HomePage() {
                         buttonsFound++;
                     }
                 });
-                console.log(`Found ${buttonsFound} button containers in clone`);
                 
                 // Add the animated card to the document
                 document.body.appendChild(animatedCard);

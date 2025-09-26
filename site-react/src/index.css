@@ -3,3 +3,91 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Custom Black Semi-Transparent Overlay Scrollbar */
+
+/* Global overlay scrollbar behavior for main containers */
+html, body {
+  overflow: overlay;
+}
+
+/* Firefox - overlay scrollbars that don't affect layout */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.5) transparent;
+}
+
+/* Override Tailwind overflow utilities to use overlay */
+.overflow-auto {
+  overflow: overlay !important;
+}
+
+.overflow-y-auto {
+  overflow-y: overlay !important;
+}
+
+.overflow-x-auto {
+  overflow-x: overlay !important;
+}
+
+.overflow-scroll {
+  overflow: overlay !important;
+}
+
+.overflow-y-scroll {
+  overflow-y: overlay !important;
+}
+
+.overflow-x-scroll {
+  overflow-x: overlay !important;
+}
+
+/* Webkit browsers (Chrome, Safari, Edge) */
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  position: absolute;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.7);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: rgba(0, 0, 0, 0.8);
+  background-clip: content-box;
+}
+
+/* Hide scrollbar when no-scrollbar class is applied */
+body.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+body.no-scrollbar {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE */
+}
+
+/* More specific override for when song overlay is open */
+.no-scrollbar::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar-track,
+.no-scrollbar::-webkit-scrollbar-thumb {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
