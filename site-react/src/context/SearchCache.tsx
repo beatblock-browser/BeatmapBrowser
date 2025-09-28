@@ -3,9 +3,9 @@ import { BeatMap } from '@/schema';
 
 interface SearchCacheContextType {
     results: BeatMap[];
-    setResults: (results: BeatMap[]) => void;
+    setResults: React.Dispatch<React.SetStateAction<BeatMap[]>>;
     isLoading: boolean;
-    setIsLoading: (isLoading: boolean) => void;
+    setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const SearchCacheContext = createContext<SearchCacheContextType | undefined>(undefined);

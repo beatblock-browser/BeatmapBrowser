@@ -9,7 +9,7 @@
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "dev:react": "rsbuild dev",
-    "dev:worker": "pnpm -C ../workers/beatmap-worker dev"
+    "dev:worker": "powershell -NoProfile -Command \"$ErrorActionPreference='Continue'; while ($true) { pnpm -C ../workers/beatmap-worker dev; Write-Host 'Worker exited. Restarting in 1s...'; Start-Sleep -Seconds 1 }\""
   },
   "dependencies": {
     "@tanstack/react-query": "^5.80.6",

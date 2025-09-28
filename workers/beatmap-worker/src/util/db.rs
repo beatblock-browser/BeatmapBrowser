@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use worker::d1::{D1Database, D1Result};
 use worker::wasm_bindgen::JsValue;
 use serde_json::Value as D1Value;
+use std::collections::HashMap;
 
 use crate::api::{BeatMap, LevelVariant};
 
@@ -118,32 +119,41 @@ impl DatabaseBackend {
     fn group_maps(
         rows: Vec<std::collections::BTreeMap<String, D1Value>>,
     ) -> Vec<BeatMap> {
-        use std::collections::BTreeMap;
-        let mut grouped: BTreeMap<Uuid, BeatMap> = BTreeMap::new();
+        // Preserve SQL order by maintaining a Vec with insertion order and an index map
+        let mut maps: Vec<BeatMap> = Vec::new();
+        let mut index_by_id: HashMap<Uuid, usize> = HashMap::new();
         for row in rows {
             let id = row.get("id").and_then(Self::parse_uuid).unwrap_or_else(Uuid::nil);
-            let entry = grouped.entry(id).or_insert_with(|| BeatMap {
-                id,
-                song: match row.get("song") { Some(D1Value::String(s)) => s.clone(), _ => String::new() },
-                artist: match row.get("artist") { Some(D1Value::String(s)) => s.clone(), _ => String::new() },
-                charter: match row.get("charter") { Some(D1Value::String(s)) => s.clone(), _ => String::new() },
-                charter_uid: row.get("charter_uid").and_then(Self::parse_uuid).unwrap_or_else(Uuid::nil),
-                difficulties: Vec::new(),
-                description: match row.get("description") { Some(D1Value::String(s)) => s.clone(), _ => String::new() },
-                artist_list: match row.get("artist_list") { Some(D1Value::String(s)) => s.clone(), _ => String::new() },
-                image: row.get("image").and_then(Self::parse_bool).unwrap_or(false),
-                upvotes: row.get("upvotes").and_then(Self::parse_u64).unwrap_or(0),
-                upload_date: row.get("upload_date").and_then(Self::parse_dt).unwrap_or_else(Utc::now),
-                update_date: row.get("update_date").and_then(Self::parse_dt).unwrap_or_else(Utc::now),
-            });
+            let idx = match index_by_id.get(&id) {
+                Some(i) => *i,
+                None => {
+                    let i = maps.len();
+                    maps.push(BeatMap {
+                        id,
+                        song: match row.get("song") { Some(D1Value::String(s)) => s.clone(), _ => String::new() },
+                        artist: match row.get("artist") { Some(D1Value::String(s)) => s.clone(), _ => String::new() },
+                        charter: match row.get("charter") { Some(D1Value::String(s)) => s.clone(), _ => String::new() },
+                        charter_uid: row.get("charter_uid").and_then(Self::parse_uuid).unwrap_or_else(Uuid::nil),
+                        difficulties: Vec::new(),
+                        description: match row.get("description") { Some(D1Value::String(s)) => s.clone(), _ => String::new() },
+                        artist_list: match row.get("artist_list") { Some(D1Value::String(s)) => s.clone(), _ => String::new() },
+                        image: row.get("image").and_then(Self::parse_bool).unwrap_or(false),
+                        upvotes: row.get("upvotes").and_then(Self::parse_u64).unwrap_or(0),
+                        upload_date: row.get("upload_date").and_then(Self::parse_dt).unwrap_or_else(Utc::now),
+                        update_date: row.get("update_date").and_then(Self::parse_dt).unwrap_or_else(Utc::now),
+                    });
+                    index_by_id.insert(id, i);
+                    i
+                }
+            };
             if let (Some(display), Some(difficulty)) = (
                 match row.get("level_display") { Some(D1Value::String(s)) => Some(s.clone()), _ => None },
                 row.get("level_difficulty").and_then(Self::parse_f64),
             ) {
-                entry.difficulties.push(LevelVariant { display, difficulty });
+                maps[idx].difficulties.push(LevelVariant { display, difficulty });
             }
         }
-        grouped.into_values().collect()
+        maps
     }
 }
 
@@ -152,25 +162,33 @@ impl Database for DatabaseBackend {
         let trimmed = params.query.trim().to_string();
         let mut idx: usize = 1;
         let mut where_parts: Vec<String> = Vec::new();
-        let mut bind_values: Vec<JsValue> = Vec::new();
+        // Separate bind vectors: WHERE binds are shared by data and count queries; relevance binds are only for data query
+        let mut where_binds: Vec<JsValue> = Vec::new();
+        let mut relevance_binds: Vec<JsValue> = Vec::new();
 
-        // Text filter
-        let text_like = if !trimmed.is_empty() {
-            let p1 = format!("?{}", idx); idx += 1;
-            let p2 = format!("?{}", idx); idx += 1;
-            let p3 = format!("?{}", idx); idx += 1;
-            bind_values.push(JsValue::from_str(&format!("%{}%", trimmed)));
-            bind_values.push(JsValue::from_str(&format!("%{}%", trimmed)));
-            bind_values.push(JsValue::from_str(&format!("%{}%", trimmed)));
-            Some(format!("(m.song LIKE {p1} OR m.artist LIKE {p2} OR m.charter LIKE {p3})"))
-        } else { None };
-        if let Some(part) = text_like { where_parts.push(part); }
+        // Text filter: multi-term AND; for each term, require a match in any target field
+        if !trimmed.is_empty() {
+            let terms: Vec<&str> = trimmed.split_whitespace().filter(|t| !t.is_empty()).collect();
+            for t in terms {
+                let p1 = format!("?{}", idx); idx += 1;
+                let p2 = format!("?{}", idx); idx += 1;
+                let p3 = format!("?{}", idx); idx += 1;
+                let p4 = format!("?{}", idx); idx += 1;
+                where_binds.push(JsValue::from_str(&format!("%{}%", t)));
+                where_binds.push(JsValue::from_str(&format!("%{}%", t)));
+                where_binds.push(JsValue::from_str(&format!("%{}%", t)));
+                where_binds.push(JsValue::from_str(&format!("%{}%", t)));
+                where_parts.push(format!(
+                    "(m.song LIKE {p1} OR m.artist LIKE {p2} OR m.charter LIKE {p3} OR m.artist_list LIKE {p4})"
+                ));
+            }
+        }
 
         // Min upvotes
         if let Some(minu) = params.min_upvotes {
             let p = format!("?{}", idx); idx += 1;
             where_parts.push(format!("m.upvotes >= {p}"));
-            bind_values.push(JsValue::from_f64(minu as f64));
+            where_binds.push(JsValue::from_f64(minu as f64));
         }
 
         // Difficulties IN list
@@ -179,7 +197,7 @@ impl Database for DatabaseBackend {
             for d in &params.difficulties {
                 let p = format!("?{}", idx); idx += 1;
                 placeholders.push(p);
-                bind_values.push(JsValue::from_str(d));
+                where_binds.push(JsValue::from_str(d));
             }
             where_parts.push(format!(
                 "EXISTS (SELECT 1 FROM {DIFFICULTIES_TABLE} dd WHERE dd.map_id = m.id AND dd.display IN ({}))",
@@ -190,44 +208,96 @@ impl Database for DatabaseBackend {
         let where_sql = if where_parts.is_empty() { String::new() } else { format!("WHERE {}", where_parts.join(" AND ")) };
 
         // Sorting
-        let (order_sql, relevance_binds): (String, Vec<JsValue>) = match params.sort {
-            SortBy::Upvotes => ("ORDER BY m.upvotes DESC, m.upload_date DESC".to_string(), vec![]),
-            SortBy::Newest => ("ORDER BY m.upload_date DESC".to_string(), vec![]),
+        let mut select_extras: String = String::new();
+        let order_sql: String = match params.sort {
+            SortBy::Upvotes => "ORDER BY m.upvotes DESC, m.upload_date DESC".to_string(),
+            SortBy::Newest => "ORDER BY m.upload_date DESC".to_string(),
             SortBy::Relevance => {
                 if trimmed.is_empty() {
-                    ("ORDER BY m.upload_date DESC".to_string(), vec![])
+                    "ORDER BY m.upload_date DESC".to_string()
                 } else {
-                    let pr1 = format!("?{}", idx); idx += 1;
-                    let pr2 = format!("?{}", idx); idx += 1;
-                    let pr3 = format!("?{}", idx); idx += 1;
-                    (
-                        format!("ORDER BY (CASE WHEN m.song LIKE {pr1} THEN 3 WHEN m.artist LIKE {pr2} THEN 2 WHEN m.charter LIKE {pr3} THEN 1 ELSE 0 END) DESC, m.upload_date DESC"),
-                        vec![
-                            JsValue::from_str(&format!("%{}%", trimmed)),
-                            JsValue::from_str(&format!("%{}%", trimmed)),
-                            JsValue::from_str(&format!("%{}%", trimmed)),
-                        ],
-                    )
+                    // Contains patterns for bucket scoring
+                    let sc = format!("?{}", idx); idx += 1; // song contains
+                    let ac = format!("?{}", idx); idx += 1; // artist contains
+                    let cc = format!("?{}", idx); idx += 1; // charter contains
+                    let alc = format!("?{}", idx); idx += 1; // artist_list contains (low weight)
+                    relevance_binds.push(JsValue::from_str(&format!("%{}%", trimmed)));
+                    relevance_binds.push(JsValue::from_str(&format!("%{}%", trimmed)));
+                    relevance_binds.push(JsValue::from_str(&format!("%{}%", trimmed)));
+                    relevance_binds.push(JsValue::from_str(&format!("%{}%", trimmed)));
+
+                    // Prefix patterns for additional boost
+                    let sp = format!("?{}", idx); idx += 1; // song prefix
+                    let ap = format!("?{}", idx); idx += 1; // artist prefix
+                    let cp = format!("?{}", idx); idx += 1; // charter prefix
+                    let alp = format!("?{}", idx); idx += 1; // artist_list prefix
+                    relevance_binds.push(JsValue::from_str(&format!("{}%", trimmed)));
+                    relevance_binds.push(JsValue::from_str(&format!("{}%", trimmed)));
+                    relevance_binds.push(JsValue::from_str(&format!("{}%", trimmed)));
+                    relevance_binds.push(JsValue::from_str(&format!("{}%", trimmed)));
+
+                    // Exact artist equality boost (case-insensitive)
+                    let ae = format!("?{}", idx); idx += 1;
+                    relevance_binds.push(JsValue::from_str(&trimmed));
+
+                    // Compute relevance flags in SELECT and later order by a weighted composite score using these flags
+                    select_extras = format!(
+                        ", \
+                           (CASE WHEN m.song LIKE {sc} THEN 1 ELSE 0 END) AS _sl,\
+                           (CASE WHEN m.artist LIKE {ac} THEN 1 ELSE 0 END) AS _al,\
+                           (CASE WHEN m.charter LIKE {cc} THEN 1 ELSE 0 END) AS _cl,\
+                           (CASE WHEN m.artist_list LIKE {alc} THEN 1 ELSE 0 END) AS _all,\
+                           (CASE WHEN m.song LIKE {sp} THEN 1 ELSE 0 END) AS _sp,\
+                           (CASE WHEN m.artist LIKE {ap} THEN 1 ELSE 0 END) AS _ap,\
+                           (CASE WHEN m.charter LIKE {cp} THEN 1 ELSE 0 END) AS _cp,\
+                           (CASE WHEN m.artist_list LIKE {alp} THEN 1 ELSE 0 END) AS _alp,\
+                           (CASE WHEN m.artist = {ae} COLLATE NOCASE THEN 1 ELSE 0 END) AS _ae"
+                    );
+                    // Weighted composite score with diminishing returns on upvotes and no double counting:
+                    // - Field bucket (no double count): max(song*2, artist*3, charter_or_list*1) * 100
+                    //   where charter_or_list = 1 if either charter or artist_list matches
+                    // - Prefix boosts (no double count): max(song*18, artist*30, charter*8, artist_list*4)
+                    // - Exact artist equality: +70
+                    // - Upvotes: piecewise linear to approximate sqrt/log (diminishing returns)
+                    //   upvote_score = CASE
+                    //       up<=40:  up*2.2
+                    //       up<=100: 40*2.2 + (up-40)*0.7
+                    //       else:    40*2.2 + 60*0.7 + (up-100)*0.25
+                    // - Recency reduced boost
+                    let score_expr = "((MAX((_sl*2), (_al*3), (CASE WHEN (_cl + _all) > 0 THEN 1 ELSE 0 END))*100) \
+                                        + (MAX((_sp*18), (_ap*30), (_cp*8), (_alp*4))) \
+                                        + (_ae*70) \
+                                        + (CASE \
+                                            WHEN m.upvotes <= 40 THEN (m.upvotes * 2.2) \
+                                            WHEN m.upvotes <= 100 THEN ((40 * 2.2) + ((m.upvotes - 40) * 0.7)) \
+                                            ELSE ((40 * 2.2) + (60 * 0.7) + ((m.upvotes - 100) * 0.25)) \
+                                          END) \
+                                        + ((-1) * (julianday('now') - julianday(m.upload_date)) * 0.1))";
+                    format!("ORDER BY {score} DESC, m.upload_date DESC", score = score_expr)
                 }
             }
         };
-        bind_values.extend(relevance_binds);
 
         let limit = (params.page_size + 1) as i64; // one extra to detect has_more
         let offset = (params.page as i64) * (params.page_size as i64);
 
         let sql = format!(
-            "SELECT m.id, m.song, m.artist, m.charter, m.charter_uid, m.description, m.artist_list, m.image, m.upvotes, m.upload_date, m.update_date, d.display AS level_display, d.difficulty AS level_difficulty \
+            "SELECT m.id, m.song, m.artist, m.charter, m.charter_uid, m.description, m.artist_list, m.image, m.upvotes, m.upload_date, m.update_date, d.display AS level_display, d.difficulty AS level_difficulty{select_extras} \
              FROM {MAPS_TABLE} m \
              LEFT JOIN {DIFFICULTIES_TABLE} d ON d.map_id = m.id \
              {where_sql} \
              {order_sql} \
-             LIMIT {limit} OFFSET {offset}"
+             LIMIT {limit} OFFSET {offset}",
+            select_extras = select_extras
         );
 
         let mut stmt = self.db.prepare(&sql);
-        if !bind_values.is_empty() {
-            stmt = stmt.bind(&bind_values[..])?;
+        // Bind WHERE binds followed by relevance binds in a single call to preserve parameter ordering
+        let mut all_binds: Vec<JsValue> = Vec::new();
+        if !where_binds.is_empty() { all_binds.extend(where_binds.clone().into_iter()); }
+        if !relevance_binds.is_empty() { all_binds.extend(relevance_binds.into_iter()); }
+        if !all_binds.is_empty() {
+            stmt = stmt.bind(&all_binds[..])?;
         }
         let result = stmt.all().await?;
         let mut maps = Self::group_maps(Self::rows(result));
@@ -240,14 +310,8 @@ impl Database for DatabaseBackend {
             "SELECT COUNT(1) as cnt FROM {MAPS_TABLE} m {where_sql}"
         );
         let mut count_stmt = self.db.prepare(&count_sql);
-        if !bind_values.is_empty() {
-            // Rebuild binds but exclude relevance-only binds at the end (3 values)
-            let mut count_binds: Vec<JsValue> = bind_values.clone();
-            if matches!(params.sort, SortBy::Relevance) && !trimmed.is_empty() {
-                // remove last three
-                for _ in 0..3 { count_binds.pop(); }
-            }
-            count_stmt = count_stmt.bind(&count_binds[..])?;
+        if !where_binds.is_empty() {
+            count_stmt = count_stmt.bind(&where_binds[..])?;
         }
         let count_res = count_stmt.all().await?;
         let total_count: u64 = match count_res.results::<std::collections::BTreeMap<String, D1Value>>() {

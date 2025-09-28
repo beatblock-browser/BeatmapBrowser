@@ -134,3 +134,22 @@ body {
   transform: translate(2px, 2px);
   box-shadow: 2px 2px 0 0 rgba(0,0,0,1);
 }
+
+/* When a search card is cloned into the animated banner, disable line clamping so titles wrap */
+#animated-banner-card .line-clamp-1 {
+  display: block !important;
+  overflow: visible !important;
+  -webkit-line-clamp: unset !important;
+  -webkit-box-orient: unset !important;
+  white-space: normal !important;
+  word-break: break-word;
+}
+
+/* When reversing, immediately restore clamp to avoid snapping as the card shrinks */
+#animated-banner-card.reclamp .line-clamp-1 {
+  display: -webkit-box !important;
+  overflow: hidden !important;
+  -webkit-line-clamp: 1 !important;
+  -webkit-box-orient: vertical !important;
+  white-space: initial !important;
+}

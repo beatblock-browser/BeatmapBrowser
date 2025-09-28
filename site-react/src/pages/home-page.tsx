@@ -39,11 +39,36 @@ export default function HomePage() {
     const originalCardPosition = useRef<{ [key: string]: DOMRect }>({});
     const sentinelRef = useRef<HTMLDivElement | null>(null);
     const requestIdRef = useRef(0);
+    // Guards for pagination to avoid duplicate requests
+    const pagingRef = useRef(false);
+    const lastLoadAtRef = useRef(0);
+    const firstPageLoadedRef = useRef(false);
+    const hasLoadedOnceRef = useRef(false);
+    const currentFilterRef = useRef<string>("");
 
     // Fetch a page from the backend worker with filters applied
     const fetchPage = useCallback(async (pageToLoad: number, reset: boolean = false) => {
         const reqId = ++requestIdRef.current;
-        const isInitial = reset && results.length === 0;
+        const isInitial = reset && !hasLoadedOnceRef.current;
+        // Build a stable filter snapshot key for this request
+        const filterKey = JSON.stringify({
+            q: debouncedQuery,
+            min: minUpvotes === "" ? null : Number(minUpvotes),
+            diffs: Array.from(selectedDifficulties).sort(),
+            sort: sortBy,
+        });
+        if (reset) {
+            // Block IO-triggered load-more for the new filter until page 0 completes
+            firstPageLoadedRef.current = false;
+            // Update the current filter immediately on reset
+            currentFilterRef.current = filterKey;
+            // Clear old results synchronously so the UI doesn't show mismatched entries
+            setResults([]);
+            setTotalCount(0);
+            setHasMore(true);
+            // Reset paging lock because we're starting fresh
+            pagingRef.current = false;
+        }
         setIsLoading(isInitial);
         setIsRefreshing(reset && !isInitial);
         setLoadingMore(!reset);
@@ -64,16 +89,38 @@ export default function HomePage() {
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json() as { results: BeatMap[]; has_more: boolean; total_count?: number };
-            if (reqId !== requestIdRef.current) {
+            // Drop responses that are stale by id or mismatch current filters
+            if (reqId !== requestIdRef.current || filterKey !== currentFilterRef.current) {
                 // stale response; ignore
                 return;
             }
             setHasMore(Boolean(data.has_more));
             if (typeof data.total_count === 'number') setTotalCount(data.total_count);
+            let cachedResults: BeatMap[] = [];
             if (reset) {
-                setResults(data.results || []);
+                const next = (data.results || []);
+                setResults(next);
+                cachedResults = next;
             } else {
-                setResults(prev => [...prev, ...(data.results || [])]);
+                setResults(prev => {
+                    const next = [...prev, ...(data.results || [])];
+                    cachedResults = next;
+                    return next;
+                });
+            }
+            try {
+                localStorage.setItem(`search:${filterKey}`,
+                    JSON.stringify({
+                        results: cachedResults,
+                        hasMore: Boolean(data.has_more),
+                        totalCount: typeof data.total_count === 'number' ? data.total_count : totalCount,
+                        savedAt: Date.now(),
+                    })
+                );
+            } catch {}
+            if (pageToLoad === 0) {
+                firstPageLoadedRef.current = true;
+                hasLoadedOnceRef.current = true;
             }
         } catch (e: any) {
             console.error("Failed to fetch results:", e);
@@ -84,12 +131,53 @@ export default function HomePage() {
             setIsRefreshing(false);
             setLoadingMore(false);
         }
-    }, [debouncedQuery, minUpvotes, selectedDifficulties, sortBy, setResults, setIsLoading, results.length]);
+    }, [debouncedQuery, minUpvotes, selectedDifficulties, sortBy, setResults, setIsLoading]);
 
     // Initial load
     useEffect(() => {
+        // Read filters from URL on first mount
+        const params = new URLSearchParams(location.search);
+        const q = params.get('q') || '';
+        const minParam = params.get('min');
+        const diffsParam = params.get('diffs');
+        const sortParam = params.get('sort') as any;
+
+        if (q) setQuery(q);
+        if (minParam !== null) setMinUpvotes(minParam === '' ? '' : Math.max(0, Number(minParam)));
+        if (diffsParam) setSelectedDifficulties(new Set(diffsParam.split(',').filter(Boolean)));
+        if (sortParam === 'relevance' || sortParam === 'upvotes' || sortParam === 'newest') setSortBy(sortParam);
+
         if (results.length === 0) {
             setPage(0);
+            // Try hydrate from cache before fetching
+            const filterKey = JSON.stringify({
+                q: q || '',
+                min: minParam === null || minParam === '' ? null : Number(minParam),
+                diffs: diffsParam ? diffsParam.split(',').filter(Boolean).sort() : [],
+                sort: sortParam || sortBy,
+            });
+            const cacheRaw = localStorage.getItem(`search:${filterKey}`);
+            if (cacheRaw) {
+                try {
+                    const cache = JSON.parse(cacheRaw);
+                    const expiryMs = 10 * 60 * 1000; // 10 minutes
+                    if (cache.savedAt && (Date.now() - cache.savedAt) < expiryMs) {
+                        currentFilterRef.current = filterKey;
+                        setResults(cache.results || []);
+                        setTotalCount(cache.totalCount || 0);
+                        setHasMore(Boolean(cache.hasMore));
+                        firstPageLoadedRef.current = true;
+                        hasLoadedOnceRef.current = true;
+                        setIsLoading(false);
+                        setIsRefreshing(false);
+                        setLoadingMore(false);
+                        return;
+                    } else {
+                        // stale cache
+                        localStorage.removeItem(`search:${filterKey}`);
+                    }
+                } catch {}
+            }
             fetchPage(0, true);
         }
     }, []);
@@ -100,11 +188,52 @@ export default function HomePage() {
         return () => clearTimeout(t);
     }, [query]);
 
-    // Refetch when filters change
+    // Refetch when filters change, but hydrate from cache if available; also sync URL
     useEffect(() => {
+        // Sync URL params
+        const params = new URLSearchParams();
+        if (debouncedQuery) params.set('q', debouncedQuery);
+        if (minUpvotes !== '') params.set('min', String(minUpvotes));
+        const diffsArr = Array.from(selectedDifficulties);
+        if (diffsArr.length) params.set('diffs', diffsArr.sort().join(','));
+        if (sortBy) params.set('sort', sortBy);
+        const search = params.toString();
+        const nextUrl = `${location.pathname}${search ? `?${search}` : ''}`;
+        if (nextUrl !== `${location.pathname}${location.search}`) {
+            navigate(nextUrl, { replace: true });
+        }
+
+        // Hydrate from cache or fetch
         setPage(0);
+        const filterKey = JSON.stringify({
+            q: debouncedQuery,
+            min: minUpvotes === '' ? null : Number(minUpvotes),
+            diffs: Array.from(selectedDifficulties).sort(),
+            sort: sortBy,
+        });
+        currentFilterRef.current = filterKey;
+        const cacheRaw = localStorage.getItem(`search:${filterKey}`);
+        if (results.length === 0 && cacheRaw) {
+            try {
+                const cache = JSON.parse(cacheRaw);
+                const expiryMs = 10 * 60 * 1000; // 10 minutes
+                if (cache.savedAt && (Date.now() - cache.savedAt) < expiryMs) {
+                    setResults(cache.results || []);
+                    setTotalCount(cache.totalCount || 0);
+                    setHasMore(Boolean(cache.hasMore));
+                    firstPageLoadedRef.current = true;
+                    hasLoadedOnceRef.current = true;
+                    setIsLoading(false);
+                    setIsRefreshing(false);
+                    setLoadingMore(false);
+                    return;
+                } else {
+                    localStorage.removeItem(`search:${filterKey}`);
+                }
+            } catch {}
+        }
         fetchPage(0, true);
-    }, [debouncedQuery, minUpvotes, selectedDifficulties, sortBy, fetchPage]);
+    }, [debouncedQuery, minUpvotes, selectedDifficulties, sortBy]);
 
     useEffect(() => {
         // Trigger title animation after component mounts
@@ -206,6 +335,12 @@ export default function HomePage() {
                         buttonsFound++;
                     }
                 });
+
+                // Hide difficulty chips to match the banner layout (they don't appear on the song-page banner)
+                const difficultyContainers = animatedCard.querySelectorAll('div.mt-2');
+                difficultyContainers.forEach((el) => {
+                    (el as HTMLElement).style.display = 'none';
+                });
                 
                 // Add the animated card to the document
                 document.body.appendChild(animatedCard);
@@ -245,6 +380,12 @@ export default function HomePage() {
                 if (animatedText) {
                     animatedText.style.transformOrigin = 'left center';
                     animatedText.style.transition = 'transform 400ms ease-out';
+                    // Capture original paddings so we can compensate during inverse scaling
+                    const cs = getComputedStyle(animatedText);
+                    (animatedText as any).dataset.padLeftOriginal = cs.paddingLeft || '0px';
+                    (animatedText as any).dataset.padRightOriginal = cs.paddingRight || '0px';
+                    (animatedText as any).dataset.padTopOriginal = cs.paddingTop || '0px';
+                    (animatedText as any).dataset.padBottomOriginal = cs.paddingBottom || '0px';
                 }
                 
                 // Trigger the transforms on next frame
@@ -258,12 +399,50 @@ export default function HomePage() {
                     // Apply translation and scaling to animated card
                     animatedCard.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
                     
-                    // Apply inverse scaling to text to keep it at original size
+                    // Apply inverse scaling to text to keep it at original size,
+                    // translate vertically to keep centered as height grows,
+                    // and compensate for padding by scaling padding on all sides
                     if (animatedText) {
-                        animatedText.style.transform = `scale(${1/scaleX}, ${1/scaleY})`;
+                        const deltaY = (bannerHeight - rect.height) / 2;
+                        const padLeftOriginal = parseFloat((animatedText as any).dataset.padLeftOriginal || '0') || 0;
+                        const padRightOriginal = parseFloat((animatedText as any).dataset.padRightOriginal || '0') || 0;
+                        const padTopOriginal = parseFloat((animatedText as any).dataset.padTopOriginal || '0') || 0;
+                        const padBottomOriginal = parseFloat((animatedText as any).dataset.padBottomOriginal || '0') || 0;
+                        // Scale paddings so that after inverse scale the perceived padding matches the original
+                        animatedText.style.paddingLeft = `${padLeftOriginal * scaleX}px`;
+                        animatedText.style.paddingRight = `${padRightOriginal * scaleX}px`;
+                        animatedText.style.paddingTop = `${padTopOriginal * scaleY}px`;
+                        animatedText.style.paddingBottom = `${padBottomOriginal * scaleY}px`;
+                        animatedText.style.transform = `translate(0px, ${deltaY}px) scale(${1/scaleX}, ${1/scaleY})`;
                     }
                     
                     setCardTransformed(true);
+
+                    // One more frame to measure and correct horizontal alignment to match banner padding
+                    requestAnimationFrame(() => {
+                        const remainingCard = document.getElementById('animated-banner-card') as HTMLButtonElement | null;
+                        if (!remainingCard) return;
+                        const remainingText = remainingCard.querySelector('[class*="absolute inset-0 flex"]') as HTMLDivElement | null;
+                        if (!remainingText) return;
+                        const targetLeftPadding = parseFloat(getComputedStyle(remainingText).paddingLeft || '24') || 24; // p-6 ~ 24px
+                        const textRect = remainingText.getBoundingClientRect();
+                        const currentLeft = textRect.left;
+                        const bannerLeft = 0; // animated card is translated to viewport left
+                        const desiredLeft = bannerLeft + targetLeftPadding;
+                        const correction = desiredLeft - currentLeft;
+                        // Preserve existing translateY and scale while adding X correction
+                        const existing = remainingText.style.transform;
+                        const match = existing.match(/translate\(([^,]+)px,\s*([^\)]+)px\)\s*scale\(([^,]+),\s*([^\)]+)\)/);
+                        if (match) {
+                            const ty = parseFloat(match[2]);
+                            const sx = parseFloat(match[3]);
+                            const sy = parseFloat(match[4]);
+                            remainingText.style.transform = `translate(${correction}px, ${ty}px) scale(${sx}, ${sy})`;
+                        } else {
+                            // Fallback: reapply with zero Y if parse fails
+                            remainingText.style.transform = `translate(${correction}px, 0px)`;
+                        }
+                    });
                 });
             }
         }
@@ -282,32 +461,37 @@ export default function HomePage() {
             
             if (existingAnimatedCard && originalRect) {
                 const animatedText = existingAnimatedCard.querySelector('[class*="absolute inset-0 flex"]') as HTMLDivElement;
-                
+
+                // Re-enable truncation immediately to avoid snapping as we shrink
+                existingAnimatedCard.classList.add('reclamp');
+
                 // Get current banner dimensions
                 const currentRect = existingAnimatedCard.getBoundingClientRect();
                 const viewportWidth = currentRect.width;
                 const bannerHeight = currentRect.height;
-                
+
+                // Do not force width/height, preserve inset-0 for proper centering during reverse
+                if (animatedText) {
+                    animatedText.style.width = '';
+                    animatedText.style.height = '';
+                }
+
                 // Start animation
                 requestAnimationFrame(() => {
                     existingAnimatedCard.style.transition = 'transform 400ms ease-out';
                     if (animatedText) {
                         animatedText.style.transition = 'transform 400ms ease-out';
                     }
-                    
+
                     requestAnimationFrame(() => {
-                        // Animate back to original position (no transform - element is already positioned at original location)
-                        const scaleBackX = originalRect.width / viewportWidth;
-                        const scaleBackY = originalRect.height / bannerHeight;
-                        
+                        // Animate back to original position
                         existingAnimatedCard.style.transform = `translate(0px, 0px) scale(1, 1)`;
                         if (animatedText) {
                             animatedText.style.transform = `scale(1, 1)`;
                         }
-                        
+
                         // Fallback cleanup in case fade out handler doesn't complete properly
                         setTimeout(() => {
-                            // Clean up animated card if it still exists
                             const remainingCard = document.getElementById('animated-banner-card');
                             if (remainingCard && remainingCard.parentNode) {
                                 remainingCard.parentNode.removeChild(remainingCard);
@@ -374,10 +558,30 @@ export default function HomePage() {
                     
                     animatedCard.style.transform = `translate(${-originalRect.left}px, ${-originalRect.top}px) scale(${scaleX}, ${scaleY})`;
                     
-                    // Update text scaling
+                    // Update text scaling and centering; re-apply scaled paddings for consistency on resize
                     const animatedText = animatedCard.querySelector('[class*="absolute inset-0 flex"]') as HTMLDivElement;
                     if (animatedText) {
-                        animatedText.style.transform = `scale(${1/scaleX}, ${1/scaleY})`;
+                        const deltaY = (newBannerHeight - originalRect.height) / 2;
+                        const padLeftOriginal = parseFloat((animatedText as any).dataset.padLeftOriginal || '0') || 0;
+                        const padRightOriginal = parseFloat((animatedText as any).dataset.padRightOriginal || '0') || 0;
+                        const padTopOriginal = parseFloat((animatedText as any).dataset.padTopOriginal || '0') || 0;
+                        const padBottomOriginal = parseFloat((animatedText as any).dataset.padBottomOriginal || '0') || 0;
+                        animatedText.style.paddingLeft = `${padLeftOriginal * scaleX}px`;
+                        animatedText.style.paddingRight = `${padRightOriginal * scaleX}px`;
+                        animatedText.style.paddingTop = `${padTopOriginal * scaleY}px`;
+                        animatedText.style.paddingBottom = `${padBottomOriginal * scaleY}px`;
+                        animatedText.style.transform = `translate(0px, ${deltaY}px) scale(${1/scaleX}, ${1/scaleY})`;
+                        animatedText.style.width = '';
+                        animatedText.style.height = '';
+
+                        // Measure and correct horizontal alignment to match banner padding
+                        const targetLeftPadding = parseFloat(getComputedStyle(animatedText).paddingLeft || '24') || 24;
+                        const textRect = animatedText.getBoundingClientRect();
+                        const currentLeft = textRect.left;
+                        const bannerLeft = 0;
+                        const desiredLeft = bannerLeft + targetLeftPadding;
+                        const correction = desiredLeft - currentLeft;
+                        animatedText.style.transform = `translate(${correction}px, ${deltaY}px) scale(${1/scaleX}, ${1/scaleY})`;
                     }
                 }
             }
@@ -513,17 +717,61 @@ export default function HomePage() {
     useEffect(() => {
         const el = sentinelRef.current;
         if (!el) return;
-        const observer = new IntersectionObserver((entries) => {
-            const first = entries[0];
-            if (first.isIntersecting && hasMore && !isLoading && !loadingMore && !transitioningCard && !isReverseAnimation) {
-                const nextPage = page + 1;
-                setPage(nextPage);
-                fetchPage(nextPage, false);
+
+        // Shared guard + load function so both IO and scroll fallback use identical logic
+        const maybeLoadMore = () => {
+            if (!hasMore) return;
+            if (isLoading || loadingMore || isRefreshing) return;
+            if (transitioningCard || isReverseAnimation) return;
+            if (pagingRef.current) return;
+            if (!firstPageLoadedRef.current) return; // wait for initial page to complete
+            const now = Date.now();
+            if (now - lastLoadAtRef.current < 500) return; // cooldown 500ms
+            setPage((prev) => {
+                const next = prev + 1;
+                pagingRef.current = true;
+                lastLoadAtRef.current = now;
+                fetchPage(next, false);
+                return next;
+            });
+        };
+
+        // IntersectionObserver for primary infinite scroll
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const first = entries[0];
+                if (first && first.isIntersecting) {
+                    maybeLoadMore();
+                }
+            },
+            {
+                root: null,
+                // Reasonable eagerness; prevents constant firing far away from viewport
+                rootMargin: '400px 0px 400px 0px',
+                threshold: 0,
             }
-        }, { rootMargin: '200px' });
+        );
         observer.observe(el);
-        return () => observer.disconnect();
-    }, [hasMore, isLoading, loadingMore, page, fetchPage, transitioningCard, isReverseAnimation]);
+
+        // No window scroll fallback; IO is sufficient and avoids duplicate trigger spam
+
+        // If sentinel is already visible, only try after initial page is done
+        const initialRect = el.getBoundingClientRect();
+        if (firstPageLoadedRef.current && !isLoading && !loadingMore && !isRefreshing && initialRect.top < window.innerHeight + 200) {
+            maybeLoadMore();
+        }
+
+        return () => {
+            observer.disconnect();
+        };
+    }, [hasMore, isLoading, loadingMore, isRefreshing, fetchPage, transitioningCard, isReverseAnimation]);
+
+    // Release pagination lock when network states settle
+    useEffect(() => {
+        if (!isLoading && !loadingMore && !isRefreshing) {
+            pagingRef.current = false;
+        }
+    }, [isLoading, loadingMore, isRefreshing]);
 
     return (
         <div className="relative min-h-screen">
