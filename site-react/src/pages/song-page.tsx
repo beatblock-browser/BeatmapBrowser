@@ -200,7 +200,7 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
                 (
                     <button
                         onClick={handleBack}
-                        className={`fixed top-4 left-4 z-[70] text-white p-2 bg-black/30 rounded-full backdrop-blur-sm hover:scale-110 active:scale-90 transition-transform transition-opacity duration-700 ease-out ${isBackVisible ? 'opacity-100 pointer-events-auto scale-100' : 'opacity-0 pointer-events-none scale-90'}`}
+                        className={`fixed top-4 left-4 z-[70] text-white p-2 bg-black/30 rounded-full backdrop-blur-sm hover:scale-110 active:scale-90 transition-all duration-700 ease-out ${isBackVisible ? 'opacity-100 pointer-events-auto scale-100' : 'opacity-0 pointer-events-none scale-90'}`}
                         style={{ willChange: 'opacity, transform' }}
                         aria-label="Back"
                     >
@@ -236,7 +236,7 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
                     />
                 </div>
 
-                <div className="absolute inset-0 bg-black/60" />
+                <div className="absolute inset-0 card-overlay-gradient" />
 
                 <div className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6">
                     <div className="flex-1 min-w-0">
@@ -258,17 +258,18 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
                 }}
             >
                 <div className="max-w-6xl mx-auto p-4 pb-2">
+                    <div className="pixel-panel rounded-md bg-white p-4">
                     <div className="flex gap-6">
                         {/* Left Sidebar */}
                         <div className="w-64 flex-shrink-0">
-                            <div className="border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 bg-white">
+                            <div className="pixel-panel p-4 bg-white">
                                 <h2 className="text-xl font-['Press_Start_2P'] mb-4">Details</h2>
                                 <div className="space-y-2">
                                     <button 
                                         onClick={handleUpvote}
-                                        className="w-full text-left font-['Press_Start_2P'] text-sm hover:bg-gray-100 p-2 rounded transition-colors"
+                                        className="w-full pixel-btn bg-white hover:bg-gray-100 px-3 py-2 text-left font-['Press_Start_2P'] text-sm rounded-sm"
                                     >
-                                        <span className="text-gray-600">Upvotes:</span> {currentMap.upvotes}
+                                        <span className="text-gray-700">↑ Upvotes:</span> {currentMap.upvotes}
                                     </button>
                                     {currentMap.difficulties && (
                                         <p className="font-['Press_Start_2P'] text-sm">
@@ -278,17 +279,17 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
                                 </div>
                             </div>
 
-                            <div className="mt-4 border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 bg-white">
+                            <div className="mt-4 pixel-panel p-4 bg-white">
                                 <h2 className="text-xl font-['Press_Start_2P'] mb-4">Download</h2>
                                 <div className="space-y-4">
                                     <a
                                         href={`https://beatmap-browser.s3.amazonaws.com/${currentMap.id}.zip`}
-                                        className="block w-full text-center py-2 px-4 bg-blue-500 text-white font-['Press_Start_2P'] text-sm hover:bg-blue-600 transition-colors"
+                                        className="block w-full text-center py-2 px-4 pixel-btn bg-blue-500 text-white font-['Press_Start_2P'] text-sm rounded-sm hover:bg-blue-600"
                                     >
                                         Download Map
                                     </a>
                                     <button
-                                        className="w-full py-2 px-4 bg-green-500 text-white font-['Press_Start_2P'] text-sm hover:bg-green-600 transition-colors"
+                                        className="w-full py-2 px-4 pixel-btn bg-green-500 text-white font-['Press_Start_2P'] text-sm rounded-sm hover:bg-green-600"
                                     >
                                         One-Click Install
                                     </button>
@@ -298,7 +299,7 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
 
                         {/* Main Content - Comments */}
                         <div className="flex-1">
-                            <div className="border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 bg-white">
+                            <div className="pixel-panel p-4 bg-white">
                                 <h2 className="text-xl font-['Press_Start_2P'] mb-4">Comments</h2>
                                 <div className="space-y-4">
                                     <div className="border border-gray-200 p-4 rounded">
@@ -307,6 +308,7 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
                                 </div>
                             </div>
                         </div>
+                    </div>
                     </div>
                 </div>
             </div>

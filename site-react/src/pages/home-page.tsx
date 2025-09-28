@@ -1,6 +1,5 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { SearchRequest, SearchResult } from "@/schema/search";
 import { BeatMap } from "@/schema";
 import { useSearchCache } from "@/context/SearchCache";
 import { useStore } from "@/lib/store";
@@ -23,37 +22,89 @@ export default function HomePage() {
     const [isReverseAnimation, setIsReverseAnimation] = useState(false);
     const [shouldFadeOut, setShouldFadeOut] = useState(false);
     const [hideButtons, setHideButtons] = useState<string | null>(null);
+    // Search and filter state
+    const [query, setQuery] = useState("");
+    const [debouncedQuery, setDebouncedQuery] = useState("");
+    const [minUpvotes, setMinUpvotes] = useState<number | "">("");
+    const [selectedDifficulties, setSelectedDifficulties] = useState<Set<string>>(new Set());
+    const [sortBy, setSortBy] = useState<"relevance" | "upvotes" | "newest">("relevance");
+    const [page, setPage] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [availableDifficulties, setAvailableDifficulties] = useState<string[]>([]);
+    const [totalCount, setTotalCount] = useState<number>(0);
     const cardRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
     const textRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
     const originalCardPosition = useRef<{ [key: string]: DOMRect }>({});
+    const sentinelRef = useRef<HTMLDivElement | null>(null);
+    const requestIdRef = useRef(0);
 
-    useEffect(() => {
-        // Do not refetch if we already have cached results
-        if (results.length > 0) return;
-
-        const fetchResults = async () => {
-            setIsLoading(true);
-            setError(null);
-            try {
-                const res = await apiFetch("/api/search", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ query: "" } as SearchRequest)
-                });
-
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data: SearchResult = await res.json();
-                setResults(data.results || []);
-            } catch (e: any) {
-                console.error("Failed to fetch results:", e);
-                setError(e.message || "Failed to load beatmaps. Please try again later.");
-                setResults([]);
-            } finally {
-                setIsLoading(false);
+    // Fetch a page from the backend worker with filters applied
+    const fetchPage = useCallback(async (pageToLoad: number, reset: boolean = false) => {
+        const reqId = ++requestIdRef.current;
+        const isInitial = reset && results.length === 0;
+        setIsLoading(isInitial);
+        setIsRefreshing(reset && !isInitial);
+        setLoadingMore(!reset);
+        setError(null);
+        try {
+            const body = {
+                query: debouncedQuery,
+                min_upvotes: minUpvotes === "" ? undefined : Number(minUpvotes),
+                difficulties: Array.from(selectedDifficulties),
+                sort: sortBy,
+                page: pageToLoad,
+                page_size: 20,
+            };
+            const res = await apiFetch("/api/search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json() as { results: BeatMap[]; has_more: boolean; total_count?: number };
+            if (reqId !== requestIdRef.current) {
+                // stale response; ignore
+                return;
             }
-        };
-        fetchResults();
-    }, [results.length, setResults, setIsLoading]);
+            setHasMore(Boolean(data.has_more));
+            if (typeof data.total_count === 'number') setTotalCount(data.total_count);
+            if (reset) {
+                setResults(data.results || []);
+            } else {
+                setResults(prev => [...prev, ...(data.results || [])]);
+            }
+        } catch (e: any) {
+            console.error("Failed to fetch results:", e);
+            setError(e.message || "Failed to load beatmaps. Please try again later.");
+            if (reset) setResults([]);
+        } finally {
+            setIsLoading(false);
+            setIsRefreshing(false);
+            setLoadingMore(false);
+        }
+    }, [debouncedQuery, minUpvotes, selectedDifficulties, sortBy, setResults, setIsLoading, results.length]);
+
+    // Initial load
+    useEffect(() => {
+        if (results.length === 0) {
+            setPage(0);
+            fetchPage(0, true);
+        }
+    }, []);
+
+    // Debounce user input for smoother filtering
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedQuery(query.trim()), 150);
+        return () => clearTimeout(t);
+    }, [query]);
+
+    // Refetch when filters change
+    useEffect(() => {
+        setPage(0);
+        fetchPage(0, true);
+    }, [debouncedQuery, minUpvotes, selectedDifficulties, sortBy, fetchPage]);
 
     useEffect(() => {
         // Trigger title animation after component mounts
@@ -424,7 +475,7 @@ export default function HomePage() {
     }, [handleCloseSongPage]);
 
     const getCardClassName = (mapId: string) => {
-        const baseClass = "block w-full aspect-[32/9] border border-black cursor-pointer overflow-hidden relative text-left bg-white";
+        const baseClass = "block w-full aspect-[32/9] border border-black cursor-pointer overflow-hidden relative text-left bg-white rounded-lg";
         const shadowClass = "shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]";
         
         // Hide the transitioning card during both forward and reverse animations (clone handles the animation)
@@ -440,17 +491,121 @@ export default function HomePage() {
         return `${baseClass} ${shadowClass} transition-all duration-100 hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:scale-[1.02] active:scale-[0.98]`;
     };
 
+    // Update available difficulties based on results without flicker
+    useEffect(() => {
+        const set = new Set<string>(availableDifficulties);
+        for (const m of results) {
+            (m.difficulties || []).forEach(d => set.add(d.display));
+        }
+        setAvailableDifficulties(Array.from(set).sort((a, b) => a.localeCompare(b)));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [results]);
+
+    const toggleDifficulty = (name: string) => {
+        setSelectedDifficulties(prev => {
+            const next = new Set(prev);
+            if (next.has(name)) next.delete(name); else next.add(name);
+            return next;
+        });
+    };
+
+    // Infinite scroll: observe sentinel
+    useEffect(() => {
+        const el = sentinelRef.current;
+        if (!el) return;
+        const observer = new IntersectionObserver((entries) => {
+            const first = entries[0];
+            if (first.isIntersecting && hasMore && !isLoading && !loadingMore && !transitioningCard && !isReverseAnimation) {
+                const nextPage = page + 1;
+                setPage(nextPage);
+                fetchPage(nextPage, false);
+            }
+        }, { rootMargin: '200px' });
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [hasMore, isLoading, loadingMore, page, fetchPage, transitioningCard, isReverseAnimation]);
+
     return (
         <div className="relative min-h-screen">
             {/* Search Grid */}
             <div className="max-w-6xl mx-auto p-4">
                 <h1
-                    className={`text-2xl mb-6 font-['Press_Start_2P'] text-center transform transition-all duration-300 ${
+                    className={`text-2xl mb-6 font-['Press_Start_2P'] pixel-title tracking-wide text-center transform transition-all duration-300 ${
                         titleVisible ? 'translate-y-0 opacity-100' : '-translate-y-5 opacity-100'
                     } ${transitioningCard && !isReverseAnimation ? 'opacity-0' : ''}`}
                 >
                     Beatmap Browser
                 </h1>
+                {/* Pixel-styled search with filters: search on its own line, filters on one row below */}
+                <div className={`sticky top-0 z-20 ${transitioningCard && !isReverseAnimation ? 'opacity-0 pointer-events-none' : 'opacity-100'} transition-opacity mb-6`}>
+                    <div className="pixel-panel rounded-md bg-white/95 backdrop-blur-sm">
+                        <div className="max-w-6xl mx-auto p-4 pt-3">
+                            {/* Row 1: Search */}
+                            <div className="flex items-center gap-2">
+                                <input
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    placeholder="Search song, artist, or charter..."
+                                    className="w-full px-3 py-3 font-['Press_Start_2P'] text-sm border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none"
+                                />
+                            </div>
+
+                            {/* Row 2: Filters (all on one row) */}
+                            <div className="mt-2 flex items-center gap-2">
+                                {/* Difficulty chips - horizontally scrollable and takes remaining space */}
+                                <div className="flex-1 flex items-center gap-2 overflow-x-auto whitespace-nowrap py-1 px-1">
+                                    {availableDifficulties.map((d) => (
+                                        <button
+                                            key={d}
+                                            onClick={() => toggleDifficulty(d)}
+                                            className={`px-2 py-1 text-xs font-['Press_Start_2P'] border border-black transition-all ${
+                                                selectedDifficulties.has(d)
+                                                    ? 'bg-purple-500 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                                                    : 'bg-white text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-gray-100'
+                                            }`}
+                                            aria-pressed={selectedDifficulties.has(d)}
+                                        >
+                                            {d}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Min upvotes compact input with placeholder and no arrows */}
+                                <input
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    value={minUpvotes === '' ? '' : String(minUpvotes)}
+                                    onChange={(e) => {
+                                        const v = e.target.value.replace(/\D+/g, '');
+                                        setMinUpvotes(v === '' ? '' : Math.max(0, Number(v)));
+                                    }}
+                                    placeholder="Min ↑"
+                                    className="w-24 px-2 py-2 font-['Press_Start_2P'] text-xs border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none"
+                                />
+
+                                {/* Sort selector */}
+                                <select
+                                    value={sortBy}
+                                    onChange={(e) => setSortBy(e.target.value as any)}
+                                    className="px-3 py-3 font-['Press_Start_2P'] text-xs border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none"
+                                    aria-label="Sort results"
+                                >
+                                    <option value="relevance">Sort: Relevance</option>
+                                    <option value="upvotes">Sort: Most Upvoted</option>
+                                    <option value="newest">Sort: Newest</option>
+                                </select>
+
+                                {/* Results count and inline spinner */}
+                                <div className="flex items-center gap-2">
+                                    {isRefreshing && (
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black" />
+                                    )}
+                                    <div className="font-['Press_Start_2P'] text-xs text-gray-700">{totalCount} results</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 {isLoading && (
                     <div className="flex flex-col items-center justify-center py-8">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
@@ -483,7 +638,7 @@ export default function HomePage() {
                                     className="absolute inset-0 w-full h-full object-cover"
                                 />
 
-                                <div className="absolute inset-0 bg-black/60" />
+                                <div className="absolute inset-0 card-overlay-gradient" />
 
                                 <div 
                                     ref={(el) => { textRefs.current[map.id] = el; }}
@@ -493,6 +648,18 @@ export default function HomePage() {
                                         <h2 className="text-xl mb-1 line-clamp-1">{map.song}</h2>
                                         <p className="text-sm">by {map.artist}</p>
                                         <p className="text-sm">Charter: {map.charter}</p>
+                                        {map.difficulties && map.difficulties.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                {map.difficulties.slice(0, 3).map((d) => (
+                                                    <span key={d.display} className="px-2 py-0.5 text-[10px] font-['Press_Start_2P'] border border-white/60 bg-black/40 rounded-sm">
+                                                        {d.display}
+                                                    </span>
+                                                ))}
+                                                {map.difficulties.length > 3 && (
+                                                    <span className="px-2 py-0.5 text-[10px] font-['Press_Start_2P'] border border-white/40 bg-black/20 rounded-sm">+{map.difficulties.length - 3}</span>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className={`absolute bottom-4 right-4 flex items-center gap-2 ease-in-out ${
                                         hideButtons === map.id 
@@ -502,7 +669,7 @@ export default function HomePage() {
                                         <div className="group relative">
                                             <a
                                                 href={`https://beatmap-browser.s3.amazonaws.com/${map.id}.zip`}
-                                                className="inline-flex items-center justify-center p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+                                                className="inline-flex items-center justify-center px-3 py-2 pixel-btn bg-blue-500 text-white rounded-sm hover:bg-blue-600"
                                                 onClick={(e) => e.stopPropagation()}
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -516,7 +683,7 @@ export default function HomePage() {
                                         </div>
                                         <div className="group relative">
                                             <button
-                                                className="inline-flex items-center justify-center p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+                                                className="inline-flex items-center justify-center px-3 py-2 pixel-btn bg-green-500 text-white rounded-sm hover:bg-green-600"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     // TODO: Implement one-click install
@@ -531,13 +698,20 @@ export default function HomePage() {
                                                 <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-black/90 rotate-45"></div>
                                             </div>
                                         </div>
-                                        <div className="bg-black/40 backdrop-blur-sm px-3 py-1 rounded-full">
-                                            <span className="text-sm">↑ {map.upvotes}</span>
+                                        <div className="pixel-panel bg-white/90 px-3 py-1 rounded-sm">
+                                            <span className="text-sm text-black">↑ {map.upvotes}</span>
                                         </div>
                                     </div>
                                 </div>
                             </button>
                         ))}
+                        {/* Sentinel for infinite scroll */}
+                        <div ref={sentinelRef} className="col-span-full h-6" />
+                        {loadingMore && (
+                            <div className="col-span-full flex justify-center py-4">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

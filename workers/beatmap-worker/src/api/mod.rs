@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use log::{info, error};
 
 use crate::json_response;
-use crate::util::db::{Database, DatabaseBackend};
+use crate::util::db::{Database, DatabaseBackend, SearchParams, SortBy};
 
 pub mod upvote;
 pub mod usersongs;
@@ -17,6 +17,11 @@ pub mod upload;
 #[derive(Debug, Deserialize)]
 pub struct SearchRequest {
     pub query: String,
+    pub min_upvotes: Option<u64>,
+    pub difficulties: Option<Vec<String>>, // matches LevelVariant.display
+    pub sort: Option<SortBy>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
 }
 
 pub async fn handle_ping(_req: Request, env: Env) -> Result<Response> {
@@ -42,6 +47,10 @@ pub async fn handle_ping(_req: Request, env: Env) -> Result<Response> {
 pub struct SearchResult {
     pub query: String,
     pub results: Vec<BeatMap>,
+    pub page: u32,
+    pub page_size: u32,
+    pub has_more: bool,
+    pub total_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,15 +87,30 @@ pub async fn handle_search(mut req: Request, env: Env) -> Result<Response> {
         error!("/api/search: failed to init database binding: {}", e);
         e
     })?;
-    let results = db.search_songs(&payload.query).await.map_err(|e| {
+    let page = payload.page.unwrap_or(0);
+    let page_size = payload.page_size.unwrap_or(20).clamp(1, 100);
+    let params = SearchParams {
+        query: payload.query.clone(),
+        min_upvotes: payload.min_upvotes,
+        difficulties: payload.difficulties.unwrap_or_default(),
+        sort: payload.sort.unwrap_or(SortBy::Newest),
+        page,
+        page_size,
+    };
+
+    let (results, has_more, total_count) = db.search_songs(&params).await.map_err(|e| {
         error!("/api/search: database error for query '{}': {}", payload.query, e);
         e
     })?;
-    info!("/api/search: success, {} results", results.len());
+    info!("/api/search: success, {} results (page={}, size={}, more={}), total={}", results.len(), page, page_size, has_more, total_count);
 
     let body = SearchResult {
         query: payload.query,
         results,
+        page,
+        page_size,
+        has_more,
+        total_count,
     };
     json_response(200, &body)
 }

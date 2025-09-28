@@ -7,8 +7,26 @@ use serde_json::Value as D1Value;
 
 use crate::api::{BeatMap, LevelVariant};
 
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SortBy {
+    Relevance,
+    Upvotes,
+    Newest,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct SearchParams {
+    pub query: String,
+    pub min_upvotes: Option<u64>,
+    pub difficulties: Vec<String>,
+    pub sort: SortBy,
+    pub page: u32,
+    pub page_size: u32,
+}
+
 pub trait Database {
-    async fn search_songs(&self, query: &str) -> Result<Vec<BeatMap>>;
+    async fn search_songs(&self, params: &SearchParams) -> Result<(Vec<BeatMap>, bool, u64)>;
 
     async fn get_map_by_id(&self, id: Uuid) -> Result<Option<BeatMap>>;
 
@@ -130,25 +148,117 @@ impl DatabaseBackend {
 }
 
 impl Database for DatabaseBackend {
-    async fn search_songs(&self, query: &str) -> Result<Vec<BeatMap>> {
-        let trimmed = query.trim();
-        let like = format!("%{}%", trimmed);
-        let sql = if trimmed.is_empty() {
-            format!(
-                "SELECT m.id, m.song, m.artist, m.charter, m.charter_uid, m.description, m.artist_list, m.image, m.upvotes, m.upload_date, m.update_date, d.display AS level_display, d.difficulty AS level_difficulty FROM {MAPS_TABLE} m LEFT JOIN {DIFFICULTIES_TABLE} d ON d.map_id = m.id ORDER BY m.upload_date DESC LIMIT 50"
-            )
-        } else {
-            format!(
-                "SELECT m.id, m.song, m.artist, m.charter, m.charter_uid, m.description, m.artist_list, m.image, m.upvotes, m.upload_date, m.update_date, d.display AS level_display, d.difficulty AS level_difficulty FROM {MAPS_TABLE} m LEFT JOIN {DIFFICULTIES_TABLE} d ON d.map_id = m.id WHERE m.song LIKE ?1 OR m.artist LIKE ?1 OR m.charter LIKE ?1 ORDER BY m.upload_date DESC LIMIT 50"
-            )
+    async fn search_songs(&self, params: &SearchParams) -> Result<(Vec<BeatMap>, bool, u64)> {
+        let trimmed = params.query.trim().to_string();
+        let mut idx: usize = 1;
+        let mut where_parts: Vec<String> = Vec::new();
+        let mut bind_values: Vec<JsValue> = Vec::new();
+
+        // Text filter
+        let text_like = if !trimmed.is_empty() {
+            let p1 = format!("?{}", idx); idx += 1;
+            let p2 = format!("?{}", idx); idx += 1;
+            let p3 = format!("?{}", idx); idx += 1;
+            bind_values.push(JsValue::from_str(&format!("%{}%", trimmed)));
+            bind_values.push(JsValue::from_str(&format!("%{}%", trimmed)));
+            bind_values.push(JsValue::from_str(&format!("%{}%", trimmed)));
+            Some(format!("(m.song LIKE {p1} OR m.artist LIKE {p2} OR m.charter LIKE {p3})"))
+        } else { None };
+        if let Some(part) = text_like { where_parts.push(part); }
+
+        // Min upvotes
+        if let Some(minu) = params.min_upvotes {
+            let p = format!("?{}", idx); idx += 1;
+            where_parts.push(format!("m.upvotes >= {p}"));
+            bind_values.push(JsValue::from_f64(minu as f64));
+        }
+
+        // Difficulties IN list
+        if !params.difficulties.is_empty() {
+            let mut placeholders: Vec<String> = Vec::new();
+            for d in &params.difficulties {
+                let p = format!("?{}", idx); idx += 1;
+                placeholders.push(p);
+                bind_values.push(JsValue::from_str(d));
+            }
+            where_parts.push(format!(
+                "EXISTS (SELECT 1 FROM {DIFFICULTIES_TABLE} dd WHERE dd.map_id = m.id AND dd.display IN ({}))",
+                placeholders.join(", ")
+            ));
+        }
+
+        let where_sql = if where_parts.is_empty() { String::new() } else { format!("WHERE {}", where_parts.join(" AND ")) };
+
+        // Sorting
+        let (order_sql, relevance_binds): (String, Vec<JsValue>) = match params.sort {
+            SortBy::Upvotes => ("ORDER BY m.upvotes DESC, m.upload_date DESC".to_string(), vec![]),
+            SortBy::Newest => ("ORDER BY m.upload_date DESC".to_string(), vec![]),
+            SortBy::Relevance => {
+                if trimmed.is_empty() {
+                    ("ORDER BY m.upload_date DESC".to_string(), vec![])
+                } else {
+                    let pr1 = format!("?{}", idx); idx += 1;
+                    let pr2 = format!("?{}", idx); idx += 1;
+                    let pr3 = format!("?{}", idx); idx += 1;
+                    (
+                        format!("ORDER BY (CASE WHEN m.song LIKE {pr1} THEN 3 WHEN m.artist LIKE {pr2} THEN 2 WHEN m.charter LIKE {pr3} THEN 1 ELSE 0 END) DESC, m.upload_date DESC"),
+                        vec![
+                            JsValue::from_str(&format!("%{}%", trimmed)),
+                            JsValue::from_str(&format!("%{}%", trimmed)),
+                            JsValue::from_str(&format!("%{}%", trimmed)),
+                        ],
+                    )
+                }
+            }
         };
-        let stmt = self.db.prepare(&sql);
-        let result = if trimmed.is_empty() {
-            stmt.all().await?
-        } else {
-            stmt.bind(&[JsValue::from_str(&like)])?.all().await?
+        bind_values.extend(relevance_binds);
+
+        let limit = (params.page_size + 1) as i64; // one extra to detect has_more
+        let offset = (params.page as i64) * (params.page_size as i64);
+
+        let sql = format!(
+            "SELECT m.id, m.song, m.artist, m.charter, m.charter_uid, m.description, m.artist_list, m.image, m.upvotes, m.upload_date, m.update_date, d.display AS level_display, d.difficulty AS level_difficulty \
+             FROM {MAPS_TABLE} m \
+             LEFT JOIN {DIFFICULTIES_TABLE} d ON d.map_id = m.id \
+             {where_sql} \
+             {order_sql} \
+             LIMIT {limit} OFFSET {offset}"
+        );
+
+        let mut stmt = self.db.prepare(&sql);
+        if !bind_values.is_empty() {
+            stmt = stmt.bind(&bind_values[..])?;
+        }
+        let result = stmt.all().await?;
+        let mut maps = Self::group_maps(Self::rows(result));
+        let has_more = maps.len() as u32 > params.page_size;
+        if has_more {
+            maps.truncate(params.page_size as usize);
+        }
+        // Total count query
+        let count_sql = format!(
+            "SELECT COUNT(1) as cnt FROM {MAPS_TABLE} m {where_sql}"
+        );
+        let mut count_stmt = self.db.prepare(&count_sql);
+        if !bind_values.is_empty() {
+            // Rebuild binds but exclude relevance-only binds at the end (3 values)
+            let mut count_binds: Vec<JsValue> = bind_values.clone();
+            if matches!(params.sort, SortBy::Relevance) && !trimmed.is_empty() {
+                // remove last three
+                for _ in 0..3 { count_binds.pop(); }
+            }
+            count_stmt = count_stmt.bind(&count_binds[..])?;
+        }
+        let count_res = count_stmt.all().await?;
+        let total_count: u64 = match count_res.results::<std::collections::BTreeMap<String, D1Value>>() {
+            Ok(rows) => rows
+                .get(0)
+                .and_then(|r| r.get("cnt"))
+                .and_then(Self::parse_u64)
+                .unwrap_or(0),
+            Err(_) => 0,
         };
-        Ok(Self::group_maps(Self::rows(result)))
+        Ok((maps, has_more, total_count))
     }
 
     async fn get_map_by_id(&self, id: Uuid) -> Result<Option<BeatMap>> {
