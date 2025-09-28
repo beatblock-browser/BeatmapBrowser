@@ -5,7 +5,7 @@ use ::zip::write::SimpleFileOptions;
 use ::zip::{ZipArchive, ZipWriter};
 use anyhow::Error;
 use std::io::{Cursor, Read, Write};
-use std::path::{Component, PathBuf};
+use std::path::{Component, Path};
 use crate::schema::parsing::{LevelData, LevelMetadata};
 
 pub const MAX_SIZE: u32 = 200000000;
@@ -29,7 +29,7 @@ pub fn get_difficulty(difficulty: f64) -> String {
     .to_string()
 }
 
-pub fn check_path(path: &PathBuf) -> Result<(), Error> {
+pub fn check_path(path: &Path) -> Result<(), Error> {
     if path
         .components()
         .any(|component| component == Component::ParentDir)
@@ -42,9 +42,9 @@ pub fn check_path(path: &PathBuf) -> Result<(), Error> {
 
 pub fn get_parser<'a>(beatmap: &'a mut Vec<u8>) -> Result<Box<dyn ArchiveParser + 'a>, APIError> {
     Ok(if beatmap.starts_with("PK".as_bytes()) {
-        Box::new(ZipArchiveReader::new(beatmap).map_err(|err| APIError::ZipError(err))?)
+        Box::new(ZipArchiveReader::new(beatmap).map_err(APIError::ZipError)?)
     } else if beatmap.starts_with("Rar".as_bytes()) {
-        Box::new(RarArchiveReader::new(beatmap).map_err(|err| APIError::ZipError(err))?)
+        Box::new(RarArchiveReader::new(beatmap).map_err(APIError::ZipError)?)
     } else {
         if beatmap.len() > 3 {
             println!("Bad archive {:?}", &beatmap[0..3]);
@@ -65,10 +65,10 @@ pub fn parse_archive(archive_parser: &mut dyn ArchiveParser) -> Result<FileData,
 
     let metadata = data.metadata;
     let mut image = None;
-    if let Some(bg_data) = metadata.bg_data.as_ref() {
-        if !bg_data.image.is_empty() {
-            image = archive_parser.fetch_file(&bg_data.image).map_or(None, Some);
-        }
+    if let Some(bg_data) = metadata.bg_data.as_ref()
+        && !bg_data.image.is_empty()
+    {
+        image = archive_parser.fetch_file(&bg_data.image).ok();
     }
 
     archive_parser.overwrite_file()?;
@@ -110,15 +110,19 @@ pub fn check_archive(file: &mut Vec<u8>) -> Result<(), Error> {
 }
 
 // Allows misspelling, just here to block exes and other malicious files
-pub const EXTENSIONS: [&'static str; 12] = [
+pub const EXTENSIONS: [&str; 12] = [
     "png", "jpg", "jpeg", "webp", "mp3", "bmp", "ogg", "oog", "wav", "json", "md", "txt",
 ];
 
 fn is_legal_name(name: &str) -> Result<bool, Error> {
-    check_path(&PathBuf::from(name))?;
+    check_path(Path::new(name))?;
     Ok(name.ends_with('/')
         || name.ends_with('\\')
-        || EXTENSIONS.contains(&name.split('.').last().unwrap()))
+        || name
+            .split('.')
+            .next_back()
+            .map(|ext| EXTENSIONS.contains(&ext))
+            .unwrap_or(false))
 }
 
 pub trait ArchiveParser {

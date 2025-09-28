@@ -34,6 +34,8 @@ aws-sdk-s3 = "1.62.0"
 aws-config = "1.5.10"
 aws-sdk-dynamodb = "1.54.0"
 mongodb = "3.2.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
+aws-sdk-sts = "1.86.0"
 
 # Serialization
 serde = { version = "1.0.210", features = ["derive"] }

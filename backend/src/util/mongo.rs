@@ -4,12 +4,11 @@ use anyhow::Error;
 use futures::TryStreamExt;
 use mongodb::bson::{doc, Document};
 use mongodb::Client;
-use mongodb::options::FindOptions;
 use serde::{Deserialize, Serialize};
 
-pub const DATABASE: &'static str = "beatmapbrowser";
-pub const MAPS_COLLECTION: &'static str = "maps";
-pub const USERS_COLLECTION: &'static str = "users";
+pub const DATABASE: &str = "beatmapbrowser";
+pub const MAPS_COLLECTION: &str = "maps";
+pub const USERS_COLLECTION: &str = "users";
 
 #[derive(Clone)]
 pub struct MongoDB {

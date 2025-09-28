@@ -1,4 +1,5 @@
 .idea/
 /target
-site/output
 Cargo.lock
+*/.wrangler
+*/.dev.vars

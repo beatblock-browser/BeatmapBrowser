@@ -1,0 +1,15 @@
+\.wrangler
+node_modules
+.dev.vars
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+*.log
+*.tmp
+*.swp
+*.swx
+.DS_Store
+Thumbs.db
+*.local
+*.env
+*.env.*

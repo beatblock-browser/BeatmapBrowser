@@ -5,7 +5,6 @@ mod util;
 mod schema;
 
 use crate::api::search::search;
-//use crate::discord::run_bot;
 use crate::util::mongo::MongoDB;
 use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::{web, App, HttpServer};
@@ -15,7 +14,6 @@ use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use actix_files::{Files, NamedFile};
-use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use crate::api::{map_data, APIError};
 
@@ -39,7 +37,7 @@ async fn main() -> Result<(), Error> {
         .finish()
         .unwrap();
 
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         App::new()
             .app_data(Data::new(auth.clone()))
             .app_data(Data::new(database.clone()))
@@ -51,13 +49,14 @@ async fn main() -> Result<(), Error> {
                 .index_file("index.html")
                 .default_handler(web::route().to(spa_fallback)))
     })
-        .bind(env::args().nth(1).unwrap().parse::<SocketAddr>()?)?
-        .run()
-        .await?;
+    .bind(env::args().nth(1).unwrap().parse::<SocketAddr>()?)?
+    .run();
+
+    server.await?;
     Ok(())
 }
 
 async fn spa_fallback() -> Result<NamedFile, APIError> {
-    Ok(NamedFile::open(format!("{}/index.html", env::args().nth(2).unwrap()))
-        .map_err(|err| APIError::IOError(err))?)
+    NamedFile::open(format!("{}/index.html", env::args().nth(2).unwrap()))
+        .map_err(APIError::IOError)
 }

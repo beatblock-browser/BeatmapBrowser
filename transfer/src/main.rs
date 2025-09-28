@@ -1,16 +1,19 @@
-use crate::amazon::{setup, MAPS_TABLE_NAME, TOKENS_TABLE_NAME, USERS_TABLE_NAME};
-use crate::types::{BeatMap, User, UserToken};
+use crate::amazon::{setup, MAPS_TABLE_NAME, USERS_TABLE_NAME};
+use crate::types::{BeatMap, User};
 use anyhow::{Context, Error};
-use std::str::FromStr;
-use crate::mongodb::{MongoDB, MAPS_COLLECTION, TOKENS_COLLECTION, USERS_COLLECTION};
+use std::env;
+use crate::d1::D1;
 
 mod amazon;
 mod types;
-mod mongodb;
+mod d1;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Error> {
-    let mut mongo = MongoDB::connect().await?;
+    let d1_sqlite_path = env::var("D1_SQLITE_PATH")
+        .context("D1_SQLITE_PATH must be set to the local D1 SQLite file path")?;
+    let mut d1 = D1::connect(&d1_sqlite_path)?;
+
     let amazon = setup().await?;
 
     let maps = amazon.db_client.scan().table_name(MAPS_TABLE_NAME)
@@ -23,11 +26,11 @@ pub async fn main() -> Result<(), Error> {
         .collect::<Result<Vec<User>, serde_dynamo::Error>>()?;
 
     for map in maps {
-        mongo.upload(map, MAPS_COLLECTION).await?;
+        d1.upsert_map(&map)?;
     }
 
     for user in users {
-        mongo.upload(user, USERS_COLLECTION).await?;
+        d1.upsert_user(&user)?;
     }
     Ok(())
 }

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { BeatMap } from '@/schema';
+import { apiFetchAuth } from '@/lib/api';
 
 interface AppState {
   selectedMap: BeatMap | null;
@@ -13,12 +14,12 @@ export const useStore = create<AppState>((set) => ({
   setSelectedMap: (map) => set({ selectedMap: map }),
   upvoteMap: async (mapId) => {
     try {
-      const response = await fetch('/api/upvote', {
+      const response = await apiFetchAuth('/api/upvote', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ mapId }),
+        body: JSON.stringify({ map_id: mapId }),
       });
       if (!response.ok) throw new Error('Failed to upvote');
       
@@ -37,12 +38,12 @@ export const useStore = create<AppState>((set) => ({
   },
   unvoteMap: async (mapId) => {
     try {
-      const response = await fetch('/api/unvote', {
+      const response = await apiFetchAuth('/api/unvote', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ mapId }),
+        body: JSON.stringify({ map_id: mapId }),
       });
       if (!response.ok) throw new Error('Failed to unvote');
       

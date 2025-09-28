@@ -1,9 +1,9 @@
 [package]
 name = "backend"
-version = "2.0.0"
-edition = "2024"
+edition.workspace = true
 
 build = "build.rs"
+
 [dependencies]
 # Web traffic
 actix-web = "4.10.2"

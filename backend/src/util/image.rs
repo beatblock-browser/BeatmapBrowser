@@ -71,18 +71,17 @@ fn replace_image_channels(
         channels.insert([255, 255, 0], channel.into());
     }
     channels.insert([255, 255, 255], [255, 255, 255]);
-    let mut i = 0;
-    for pixel in img_buffer.pixels_mut() {
+    for (i, pixel) in img_buffer.pixels_mut().enumerate() {
         if let Some(replacement) = channels.get(&pixel.0) {
             pixel.0 = *replacement;
         } else {
-            pixel.0 = if ((i % size.0) % 2 == 0) && (i / size.0) % 2 == 0 {
+            let i = i as u32;
+            pixel.0 = if (i % size.0).is_multiple_of(2) && (i / size.0).is_multiple_of(2) {
                 [0, 0, 0]
             } else {
                 [255, 0, 255]
             }
         }
-        i += 1;
     }
     img_buffer
 }

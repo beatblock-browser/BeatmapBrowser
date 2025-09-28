@@ -31,7 +31,7 @@ impl ArchiveParser for RarArchiveReader<'_> {
             Iter::new(|name| !name.ends_with(&file_name), &self.temp_file)?
                 .collect::<Result<Vec<_>, Error>>()?
                 .into_iter()
-                .filter_map(|value| value)
+                .flatten()
                 .min_by_key(|(name, _)| name.matches('/').count())
                 .context(format!("Failed to find the file {target_file_name}"))?
                 .1,
@@ -51,7 +51,7 @@ impl ArchiveParser for RarArchiveReader<'_> {
             let (file_data, next) = header.read()?;
             if !file_data.is_empty() {
                 zip.start_file(&file_name, SimpleFileOptions::default())?;
-                zip.write(&file_data)?;
+                zip.write_all(&file_data)?;
             }
             archive = next;
         }
@@ -104,12 +104,10 @@ impl<F: Fn(&String) -> bool> Iterator for Iter<F> {
     type Item = Result<Option<(String, Vec<u8>)>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let Some(header) = (match self.archive.take().unwrap().read_header() {
+        let header = (match self.archive.take().unwrap().read_header() {
             Ok(header) => header,
             Err(error) => return Some(Err(error.into())),
-        }) else {
-            return None;
-        };
+        })?;
         Some(self.check_entry(header))
     }
 }

@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use anyhow::Error;
-use aws_config::meta::region::RegionProviderChain;
 use aws_config::Region;
+use aws_sdk_sts as sts;
+
 use aws_sdk_dynamodb::operation::update_item::builders::UpdateItemFluentBuilder;
 use aws_sdk_dynamodb::types::AttributeValue;
 use aws_sdk_s3::config::BehaviorVersion;
@@ -24,8 +25,33 @@ pub struct Amazon {
 }
 
 pub async fn setup() -> Result<Amazon, Error> {
-    let region_provider = RegionProviderChain::first_try(Region::new(BUCKET_REGION));
-    let shared_config = aws_config::defaults(BehaviorVersion::latest()).region(region_provider).load().await;
+    // Use the default credential chain from environment/profile/IMDS, and force region
+    let shared_config = aws_config::from_env()
+        .region(Region::new(BUCKET_REGION))
+        .load()
+        .await;
+
+    // Diagnostics: print resolved region and caller identity to confirm creds work
+    let resolved_region = shared_config
+        .region()
+        .map(|r| r.as_ref().to_string())
+        .unwrap_or_else(|| "<none>".to_string());
+    println!("AWS resolved region: {}", resolved_region);
+
+    let sts_client = sts::Client::new(&shared_config);
+    match sts_client.get_caller_identity().send().await {
+        Ok(id) => {
+            let account = id.account().unwrap_or("<unknown>");
+            let arn = id.arn().unwrap_or("<unknown>");
+            println!("STS GetCallerIdentity OK. Account={} ARN={}", account, arn);
+        }
+        Err(e) => {
+            println!(
+                "STS GetCallerIdentity failed: {}\nHint: check AWS_* env vars for hidden newlines/CR, AWS_REGION, and system clock.",
+                e
+            );
+        }
+    }
     Ok(Amazon {
         s3_client: aws_sdk_s3::Client::new(&shared_config),
         db_client: aws_sdk_dynamodb::Client::new(&shared_config),

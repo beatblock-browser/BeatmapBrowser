@@ -12,6 +12,7 @@ use typebinder::step_spawner::mod_reader::RustModuleReader;
 use regex::Regex;
 
 pub fn main() -> Result<(), Error> {
+    return Ok(());
     println!("cargo:rerun-if-changed=src/schema");
 
     let solving_context = TypeSolvingContextBuilder::default()

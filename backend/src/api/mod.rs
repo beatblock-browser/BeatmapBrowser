@@ -6,7 +6,6 @@ use actix_web::{get, HttpResponse, ResponseError};
 use anyhow::{anyhow, Error};
 use mongodb::bson::doc;
 use std::sync::Arc;
-use bson::serde_helpers::serialize_uuid_1_as_binary;
 use bson::{Binary, Uuid};
 use bson::spec::BinarySubtype;
 use log::error;

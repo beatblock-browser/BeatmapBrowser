@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { BeatMap } from "@/schema";
 import { useStore } from "@/lib/store";
+import { apiFetch } from "@/lib/api";
 // @ts-ignore
 import default_image from './../public/beatblocks.jpg';
 
@@ -76,7 +77,8 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
                 setError(null);
                 
                 try {
-                    const response = await fetch(`/api/map/${id}`);
+                    const response = await apiFetch(`/api/map/${id}`);
+
                     if (!response.ok) {
                         if (response.status === 404) {
                             setError("Song not found");

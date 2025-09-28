@@ -3,6 +3,8 @@ import { SearchRequest, SearchResult } from "@/schema/search";
 import { BeatMap } from "@/schema";
 import { useSearchCache } from "@/context/SearchCache";
 import { useStore } from "@/lib/store";
+import { apiFetch } from "@/lib/api";
+
 import SongPage from "./song-page";
 // @ts-ignore
 import default_image from './../public/beatblocks.jpg';
@@ -27,11 +29,12 @@ export default function HomePage() {
             setIsLoading(true);
             setError(null);
             try {
-                const res = await fetch("/api/search", {
+                const res = await apiFetch("/api/search", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ query: "" } as SearchRequest)
                 });
+
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data: SearchResult = await res.json();
                 setResults(data.results || []);

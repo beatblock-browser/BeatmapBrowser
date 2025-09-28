@@ -19,16 +19,15 @@ impl ArchiveParser for ZipArchiveReader<'_> {
         let mut archive = ZipArchive::new(&mut cursor)?;
         let target_file_name = target_file_name.to_ascii_lowercase();
         let mut output = Vec::new();
-        archive
-            .by_name(
-                &archive
-                    .file_names()
-                    .filter(|name| name.to_ascii_lowercase().ends_with(&target_file_name))
-                    .min_by_key(|name| name.matches('/').count())
-                    .context(format!("Failed to find the file {target_file_name}"))?
-                    .to_string(),
-            )?
-            .read_to_end(&mut output)?;
+        let selected_name = {
+            let names: Vec<String> = archive.file_names().map(|n| n.to_string()).collect();
+            names
+                .into_iter()
+                .filter(|name| name.to_ascii_lowercase().ends_with(&target_file_name))
+                .min_by_key(|name| name.matches('/').count())
+                .context(format!("Failed to find the file {target_file_name}"))?
+        };
+        archive.by_name(&selected_name)?.read_to_end(&mut output)?;
         Ok(output)
     }
 

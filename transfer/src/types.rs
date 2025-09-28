@@ -52,8 +52,8 @@ impl AccountLink {
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct LevelVariant {
-    display: String,
-    difficulty: f64,
+    pub display: String,
+    pub difficulty: f64,
 }
 
 

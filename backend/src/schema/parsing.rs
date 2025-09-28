@@ -51,9 +51,9 @@ pub struct ColorChannel {
     pub blue: u8
 }
 
-impl Into<[u8; 3]> for &ColorChannel {
-    fn into(self) -> [u8; 3] {
-        [self.red, self.green, self.blue]
+impl From<&ColorChannel> for [u8; 3] {
+    fn from(val: &ColorChannel) -> Self {
+        [val.red, val.green, val.blue]
     }
 }
 
@@ -63,11 +63,11 @@ pub struct LevelVariant {
     difficulty: f64,
 }
 
-impl Into<LevelVariant> for f64 {
-    fn into(self) -> LevelVariant {
+impl From<f64> for LevelVariant {
+    fn from(val: f64) -> Self {
         LevelVariant {
-            display: get_difficulty(self),
-            difficulty: self,
+            display: get_difficulty(val),
+            difficulty: val,
         }
     }
 }
