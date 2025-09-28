@@ -1,8 +1,5 @@
-use anyhow::Error;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
-use tokio::time::error::Elapsed;
 use uuid::Uuid;
 
 pub type UserID = Uuid;
@@ -41,65 +38,8 @@ pub enum AccountLink {
     Google(String)
 }
 
-impl AccountLink {
-    pub fn id(&self) -> String {
-        match self {
-            AccountLink::Discord(id) => id.to_string(),
-            AccountLink::Google(id) => id.clone()
-        }
-    }
-}
-
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct LevelVariant {
     pub display: String,
     pub difficulty: f64,
-}
-
-
-#[derive(Error, Debug)]
-pub enum APIError {
-    #[error("Ratelimited")]
-    Ratelimited(),
-    #[error("Authentication error")]
-    AuthError(String),
-    #[error("Database error")]
-    DatabaseError(Error),
-    #[error("Deserialization error")]
-    SerdeError(#[from] serde_json::Error),
-    #[error("Already upvoted!")]
-    AlreadyUpvoted(),
-    #[error("Already downloaded!")]
-    AlreadyDownloaded(),
-    #[error("Expected a multi-part form!")]
-    ArgumentError(),
-    #[error("Unknown archive type, please submit a zip or rar!")]
-    ArchiveTypeError(),
-    #[error("Error with multi-part form!")]
-    KnownArgumentError(Error),
-    #[error("IO error")]
-    IOError(#[from] std::io::Error),
-    #[error("Zip error, please confirm your beatmap file is correct and contains all needed files")]
-    ZipError(Error),
-    #[error("Zip download error")]
-    ZipDownloadError(#[from] serenity::Error),
-    #[error("Invalid song name")]
-    SongNameError(#[from] serde_urlencoded::ser::Error),
-    #[error("Served timed out reading archive")]
-    TimeoutError(#[from] Elapsed),
-    #[error("You do not have permission to perform this action")]
-    PermissionError()
-}
-
-impl APIError {
-    pub fn database_error<E: Into<Error>>(error: E) -> APIError {
-        APIError::DatabaseError(error.into())
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserToken {
-    pub id: UserID,
-    #[serde(rename = "user_token")]
-    token: String,
 }
