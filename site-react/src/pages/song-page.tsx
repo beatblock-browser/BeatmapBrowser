@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { BeatMap } from "@/schema";
 import { useStore } from "@/lib/store";
 import { apiFetch } from "@/lib/api";
@@ -15,12 +16,15 @@ interface SongPageProps {
 export default function SongPage({ skipEntranceAnimation = false, onClose, shouldFadeOut = false }: SongPageProps) {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { selectedMap, setSelectedMap, upvoteMap, unvoteMap } = useStore();
+    const location = useLocation();
+    const { selectedMap, setSelectedMap, upvoteMap } = useStore();
     const [fetchedMap, setFetchedMap] = useState<BeatMap | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isVisible, setIsVisible] = useState(false);
     const [hasAnimatedCard, setHasAnimatedCard] = useState(false);
+    const [isBackVisible, setIsBackVisible] = useState(false);
+    const [shouldRenderBack, setShouldRenderBack] = useState(false);
 
     // Determine which map to use and whether we're in overlay mode
     const isOverlayMode = !!selectedMap;
@@ -34,6 +38,20 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
         
         return () => clearTimeout(fadeInTimer);
     }, [skipEntranceAnimation]);
+
+    // Delay back button appearance explicitly via state to ensure consistent timing
+    useEffect(() => {
+        if (isVisible) {
+            const t = setTimeout(() => {
+                setShouldRenderBack(true);
+                // ensure first paint at opacity-0, then animate to 1
+                requestAnimationFrame(() => setIsBackVisible(true));
+            }, 500);
+            return () => clearTimeout(t);
+        }
+        setIsBackVisible(false);
+        setShouldRenderBack(false);
+    }, [isVisible]);
 
     // Monitor for animated cards
     useEffect(() => {
@@ -107,18 +125,26 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
         
         // Then handle the actual back action after fade out completes
         setTimeout(() => {
-            if (isOverlayMode && onClose) {
-                // In overlay mode with reverse animation
-                onClose();
-            } else {
-                // For other cases
-                if (isOverlayMode) {
-                    // In overlay mode without reverse animation, close directly
-                    setSelectedMap(null);
+            // Prefer router history back when we were opened with a background location
+            const hasBackground = (location.state as any)?.backgroundLocation;
+            if (hasBackground) {
+                // Let Home know to run reverse animation
+                window.dispatchEvent(new Event('song:closing'));
+                navigate(-1);
+                return;
+            }
+
+            // Fallbacks
+            if (isOverlayMode) {
+                // Notify reverse animation as we close overlay
+                window.dispatchEvent(new Event('song:closing'));
+                if (onClose) {
+                    onClose();
                 } else {
-                    // In URL mode, navigate back to home
-                    navigate('/');
+                    setSelectedMap(null);
                 }
+            } else {
+                navigate('/');
             }
         }, 300); // Wait for fade out to complete
     };
@@ -169,6 +195,22 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
         <div
             className={`fixed inset-0 z-[40] transition-opacity duration-300 ease-in-out ${isVisible ? 'opacity-100' : 'opacity-0'}`}
         >
+            {/* Back Button - only when in overlay/modal flow. Use a portal so it sits above the animated card (z-50). */}
+            {(((location.state as any)?.backgroundLocation) || isOverlayMode) && shouldRenderBack && createPortal(
+                (
+                    <button
+                        onClick={handleBack}
+                        className={`fixed top-4 left-4 z-[70] text-white p-2 bg-black/30 rounded-full backdrop-blur-sm hover:scale-110 active:scale-90 transition-transform transition-opacity duration-700 ease-out ${isBackVisible ? 'opacity-100 pointer-events-auto scale-100' : 'opacity-0 pointer-events-none scale-90'}`}
+                        style={{ willChange: 'opacity, transform' }}
+                        aria-label="Back"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                ),
+                document.body
+            )}
             {/* Background Panel */}
             <div
                 className={`absolute inset-0 bg-white transition-all duration-300 ease-in-out ${

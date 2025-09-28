@@ -1,15 +1,18 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { SearchRequest, SearchResult } from "@/schema/search";
 import { BeatMap } from "@/schema";
 import { useSearchCache } from "@/context/SearchCache";
 import { useStore } from "@/lib/store";
 import { apiFetch } from "@/lib/api";
 
-import SongPage from "./song-page";
+// Overlay song page is now routed via App.tsx using background location
 // @ts-ignore
 import default_image from './../public/beatblocks.jpg';
 
 export default function HomePage() {
+    const navigate = useNavigate();
+    const location = useLocation();
     const { results, setResults, isLoading, setIsLoading } = useSearchCache();
     const { selectedMap, setSelectedMap } = useStore();
     const [error, setError] = useState<string | null>(null);
@@ -25,6 +28,9 @@ export default function HomePage() {
     const originalCardPosition = useRef<{ [key: string]: DOMRect }>({});
 
     useEffect(() => {
+        // Do not refetch if we already have cached results
+        if (results.length > 0) return;
+
         const fetchResults = async () => {
             setIsLoading(true);
             setError(null);
@@ -47,7 +53,7 @@ export default function HomePage() {
             }
         };
         fetchResults();
-    }, [setResults, setIsLoading]);
+    }, [results.length, setResults, setIsLoading]);
 
     useEffect(() => {
         // Trigger title animation after component mounts
@@ -58,19 +64,26 @@ export default function HomePage() {
     useEffect(() => {
         // Create or update the style element for hiding scrollbars
         let styleElement = document.getElementById('hide-scrollbar-style') as HTMLStyleElement;
-        
+
         if (selectedMap) {
+            // Compute scrollbar width and pad body to avoid layout shift
+            const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+            if (scrollbarWidth > 0) {
+                document.body.style.paddingRight = `${scrollbarWidth}px`;
+            }
+
+            document.body.classList.add('no-scrollbar');
             document.body.style.overflow = 'hidden';
             document.body.style.scrollbarWidth = 'none'; // Firefox
             (document.body.style as any).msOverflowStyle = 'none'; // IE
-            
+
             // Create style element to forcefully hide webkit scrollbars
             if (!styleElement) {
                 styleElement = document.createElement('style');
                 styleElement.id = 'hide-scrollbar-style';
                 document.head.appendChild(styleElement);
             }
-            
+
             styleElement.textContent = `
                 html::-webkit-scrollbar, body::-webkit-scrollbar {
                     display: none !important;
@@ -83,10 +96,12 @@ export default function HomePage() {
                 }
             `;
         } else {
-            document.body.style.overflow = 'overlay';
+            document.body.classList.remove('no-scrollbar');
+            document.body.style.overflow = '';
             document.body.style.scrollbarWidth = 'thin'; // Firefox
             (document.body.style as any).msOverflowStyle = ''; // IE
-            
+            document.body.style.paddingRight = '';
+
             // Remove the hide scrollbar style
             if (styleElement) {
                 styleElement.remove();
@@ -95,10 +110,12 @@ export default function HomePage() {
 
         // Cleanup function to restore scroll when component unmounts
         return () => {
-            document.body.style.overflow = 'overlay';
+            document.body.classList.remove('no-scrollbar');
+            document.body.style.overflow = '';
             document.body.style.scrollbarWidth = 'thin';
             (document.body.style as any).msOverflowStyle = '';
-            
+            document.body.style.paddingRight = '';
+
             const cleanupStyleElement = document.getElementById('hide-scrollbar-style');
             if (cleanupStyleElement) {
                 cleanupStyleElement.remove();
@@ -321,19 +338,22 @@ export default function HomePage() {
 
     const handleCardClick = (map: BeatMap) => {
         if (transitioningCard || isReverseAnimation) return; // Prevent clicks during any animation
-        
+
         // Hide buttons first
         setHideButtons(map.id);
-        
+
         // Small delay to let button fade start before cloning the card
         setTimeout(() => {
             setTransitioningCard(map.id);
             setSelectedMap(map);
             setShouldFadeOut(false); // Reset fade out state
+
+            // Navigate to song route with background location so Home stays mounted
+            navigate(`/song/${map.id}`, { state: { backgroundLocation: location } });
         }, 50); // Small delay for React to update DOM
     };
 
-    const handleCloseSongPage = () => {
+    const handleCloseSongPage = useCallback(() => {
         console.log('Close song page clicked');
         
         if (selectedMap && transitioningCard) {
@@ -341,32 +361,33 @@ export default function HomePage() {
             setShouldFadeOut(true);
             setIsReverseAnimation(true);
             
-            // Cleanup after animations finish (reverse animation takes 400ms)
+            // Cleanup after animations finish (reverse animation takes ~400ms)
             setTimeout(() => {
                 console.log('Cleanup after animations complete');
-                
-                // First hide the song page to prevent "Song not found" flicker
-                setShowSongPage(false);
-                
-                                 // Then clean up all other states
-                 setTimeout(() => {
-                     setShouldFadeOut(false);
-                     setSelectedMap(null);
-                     setTransitioningCard(null);
-                     setIsReverseAnimation(false);
-                     setCardTransformed(false);
-                     
-                     // Clean up any remaining animated cards
-                     const animatedCard = document.getElementById('animated-banner-card');
-                     if (animatedCard && animatedCard.parentNode) {
-                         animatedCard.parentNode.removeChild(animatedCard);
-                     }
-                     
-                     // Show buttons again quickly
-                     setTimeout(() => {
-                         setHideButtons(null);
-                     }, 10); // Almost immediate
-                 }, 50); // Small delay to ensure song page is hidden first
+
+                // Unhide the original card first so there is never a gap
+                setTransitioningCard(null);
+                setIsReverseAnimation(false);
+                setCardTransformed(false);
+
+                // On the next frame, hide the song page so the card is already visible underneath
+                requestAnimationFrame(() => {
+                    setShowSongPage(false);
+
+                    // Then clean up remaining state and remove the clone after another frame
+                    setTimeout(() => {
+                        setShouldFadeOut(false);
+                        setSelectedMap(null);
+
+                        requestAnimationFrame(() => {
+                            const animatedCard = document.getElementById('animated-banner-card');
+                            if (animatedCard && animatedCard.parentNode) {
+                                animatedCard.parentNode.removeChild(animatedCard);
+                            }
+                            setHideButtons(null);
+                        });
+                    }, 20);
+                });
             }, 450); // After reverse animation completes (400ms) + small buffer
         } else {
             // Fallback for direct URL access
@@ -385,19 +406,29 @@ export default function HomePage() {
                  }, 50);
             }, 350); // After fade out completes (300ms) + buffer
         }
-    };
+    }, [selectedMap, transitioningCard, setSelectedMap]);
 
     const handleFadeOutComplete = () => {
         // This handler isn't working reliably, so we rely on the timeout-based cleanup
         console.log('Fade out complete called but using timeout-based cleanup instead');
     };
 
+    // Listen for song closing triggered from SongPage (router back)
+    useEffect(() => {
+        const listener = () => {
+            // Mirror clicking the back button overlay
+            handleCloseSongPage();
+        };
+        window.addEventListener('song:closing', listener as EventListener);
+        return () => window.removeEventListener('song:closing', listener as EventListener);
+    }, [handleCloseSongPage]);
+
     const getCardClassName = (mapId: string) => {
         const baseClass = "block w-full aspect-[32/9] border border-black cursor-pointer overflow-hidden relative text-left bg-white";
         const shadowClass = "shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]";
         
-        // Hide the transitioning card during forward animation (clone handles the animation)
-        if (transitioningCard === mapId && !isReverseAnimation) {
+        // Hide the transitioning card during both forward and reverse animations (clone handles the animation)
+        if (transitioningCard === mapId) {
             return `${baseClass} transform-gpu invisible`;
         }
         
@@ -511,22 +542,7 @@ export default function HomePage() {
                 )}
             </div>
 
-            {/* Song Page Overlay */}
-            {showSongPage && <SongPage skipEntranceAnimation={!!transitioningCard} onClose={handleFadeOutComplete} shouldFadeOut={shouldFadeOut} />}
-            
-            {/* Back Button - Rendered outside SongPage to avoid z-index inheritance */}
-            {showSongPage && !shouldFadeOut && (
-                <button
-                    className={`fixed top-4 left-4 z-[60] text-white p-2 bg-black/20 rounded-full backdrop-blur-sm 
-                               transform transition-all duration-300 hover:scale-110 active:scale-90 
-                               opacity-100 scale-100`}
-                    onClick={handleCloseSongPage}
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                </button>
-            )}
+            {/* Song overlay/back button now handled by router-level modal in App.tsx */}
         </div>
     );
 }
