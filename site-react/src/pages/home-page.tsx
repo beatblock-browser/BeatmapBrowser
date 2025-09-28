@@ -9,6 +9,35 @@ import { apiFetch } from "@/lib/api";
 // @ts-ignore
 import default_image from './../public/beatblocks.jpg';
 
+// Preferred difficulty order; also used to seed the available list so all appear
+const DIFFICULTY_ORDER: string[] = [
+    'Apocraphyia',
+    'Challenge',
+    'Hard',
+    'Easy',
+    'Special',
+];
+
+function normalizeDifficulty(name: string): string {
+    if (!name) return '';
+    // Remove zero-width and BOM characters, normalize whitespace
+    const cleaned = name
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const lower = cleaned.toLowerCase();
+    // Exact canonical match first
+    const exact = DIFFICULTY_ORDER.find((n) => n.toLowerCase() === lower);
+    if (exact) return exact;
+    // Fuzzy prefix mapping to canonical
+    if (lower.startsWith('apoc')) return 'Apocraphyia';
+    if (lower.startsWith('chall')) return 'Challenge';
+    if (lower.startsWith('hard')) return 'Hard';
+    if (lower.startsWith('easy')) return 'Easy';
+    if (lower.startsWith('spec')) return 'Special';
+    return cleaned;
+}
+
 export default function HomePage() {
     const navigate = useNavigate();
     const location = useLocation();
@@ -32,7 +61,22 @@ export default function HomePage() {
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [availableDifficulties, setAvailableDifficulties] = useState<string[]>([]);
+    const availableDifficulties = useMemo<string[]>(() => {
+        const set = new Set<string>(DIFFICULTY_ORDER.map(normalizeDifficulty));
+        for (const m of results) {
+            (m.difficulties || []).forEach(d => set.add(normalizeDifficulty(d.display)));
+        }
+        const list = Array.from(set);
+        list.sort((a, b) => {
+            const ia = DIFFICULTY_ORDER.indexOf(a);
+            const ib = DIFFICULTY_ORDER.indexOf(b);
+            const ra = ia === -1 ? Number.POSITIVE_INFINITY : ia;
+            const rb = ib === -1 ? Number.POSITIVE_INFINITY : ib;
+            if (ra !== rb) return ra - rb;
+            return a.localeCompare(b);
+        });
+        return list;
+    }, [results]);
     const [totalCount, setTotalCount] = useState<number>(0);
     const cardRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
     const textRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
@@ -62,10 +106,7 @@ export default function HomePage() {
             firstPageLoadedRef.current = false;
             // Update the current filter immediately on reset
             currentFilterRef.current = filterKey;
-            // Clear old results synchronously so the UI doesn't show mismatched entries
-            setResults([]);
-            setTotalCount(0);
-            setHasMore(true);
+            // Do NOT clear results or counts to avoid UI flicker while searching
             // Reset paging lock because we're starting fresh
             pagingRef.current = false;
         }
@@ -144,7 +185,12 @@ export default function HomePage() {
 
         if (q) setQuery(q);
         if (minParam !== null) setMinUpvotes(minParam === '' ? '' : Math.max(0, Number(minParam)));
-        if (diffsParam) setSelectedDifficulties(new Set(diffsParam.split(',').filter(Boolean)));
+        if (diffsParam) setSelectedDifficulties(new Set(
+            diffsParam
+                .split(',')
+                .filter(Boolean)
+                .map(normalizeDifficulty)
+        ));
         if (sortParam === 'relevance' || sortParam === 'upvotes' || sortParam === 'newest') setSortBy(sortParam);
 
         if (results.length === 0) {
@@ -695,20 +741,13 @@ export default function HomePage() {
         return `${baseClass} ${shadowClass} transition-all duration-100 hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:scale-[1.02] active:scale-[0.98]`;
     };
 
-    // Update available difficulties based on results without flicker
-    useEffect(() => {
-        const set = new Set<string>(availableDifficulties);
-        for (const m of results) {
-            (m.difficulties || []).forEach(d => set.add(d.display));
-        }
-        setAvailableDifficulties(Array.from(set).sort((a, b) => a.localeCompare(b)));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [results]);
+    
 
     const toggleDifficulty = (name: string) => {
+        const normalized = normalizeDifficulty(name);
         setSelectedDifficulties(prev => {
             const next = new Set(prev);
-            if (next.has(name)) next.delete(name); else next.add(name);
+            if (next.has(normalized)) next.delete(normalized); else next.add(normalized);
             return next;
         });
     };
@@ -784,33 +823,46 @@ export default function HomePage() {
                 >
                     Beatmap Browser
                 </h1>
-                {/* Pixel-styled search with filters: search on its own line, filters on one row below */}
+                {/* Pixel-styled search with filters: search on its own line, filters below */}
                 <div className={`sticky top-0 z-20 ${transitioningCard && !isReverseAnimation ? 'opacity-0 pointer-events-none' : 'opacity-100'} transition-opacity mb-6`}>
                     <div className="pixel-panel rounded-md bg-white/95 backdrop-blur-sm">
-                        <div className="max-w-6xl mx-auto p-4 pt-3">
+                        <div className="max-w-6xl mx-auto px-4 pt-3 pb-2">
                             {/* Row 1: Search */}
                             <div className="flex items-center gap-2">
-                                <input
-                                    value={query}
-                                    onChange={(e) => setQuery(e.target.value)}
-                                    placeholder="Search song, artist, or charter..."
-                                    className="w-full px-3 py-3 font-['Press_Start_2P'] text-sm border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none"
-                                />
+                                <div className="search-wrapper w-full">
+                                    <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                        <circle cx="11" cy="11" r="8"/>
+                                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                    </svg>
+                                    <input
+                                        value={query}
+                                        onChange={(e) => setQuery(e.target.value)}
+                                        placeholder="Search songs, artists, or charters…"
+                                        className="w-full h-12 text-[24px] leading-none pl-8 pr-10 font-['Press_Start_2P'] pixel-control pixel-focus"
+                                        aria-label="Search beatmaps"
+                                    />
+                                    {query && (
+                                        <button
+                                            type="button"
+                                            className="search-clear pixel-focus"
+                                            aria-label="Clear search"
+                                            onClick={() => setQuery('')}
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
-                            {/* Row 2: Filters (all on one row) */}
-                            <div className="mt-2 flex items-center gap-2">
-                                {/* Difficulty chips - horizontally scrollable and takes remaining space */}
-                                <div className="flex-1 flex items-center gap-2 overflow-x-auto whitespace-nowrap py-1 px-1">
-                                    {availableDifficulties.map((d) => (
+                            {/* Row 2: Filters */}
+                            <div className="mt-2 flex items-center justify-between gap-3">
+                                {/* Difficulty chips - left group */}
+                                <div className="flex-1 min-w-0 flex items-center gap-2 overflow-x-auto whitespace-nowrap py-1 px-1">
+                                    {[...new Set(availableDifficulties)].map((d) => (
                                         <button
                                             key={d}
                                             onClick={() => toggleDifficulty(d)}
-                                            className={`px-2 py-1 text-xs font-['Press_Start_2P'] border border-black transition-all ${
-                                                selectedDifficulties.has(d)
-                                                    ? 'bg-purple-500 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-                                                    : 'bg-white text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-gray-100'
-                                            }`}
+                                            className="pixel-chip"
                                             aria-pressed={selectedDifficulties.has(d)}
                                         >
                                             {d}
@@ -818,57 +870,53 @@ export default function HomePage() {
                                     ))}
                                 </div>
 
-                                {/* Min upvotes compact input with placeholder and no arrows */}
-                                <input
-                                    inputMode="numeric"
-                                    pattern="[0-9]*"
-                                    value={minUpvotes === '' ? '' : String(minUpvotes)}
-                                    onChange={(e) => {
-                                        const v = e.target.value.replace(/\D+/g, '');
-                                        setMinUpvotes(v === '' ? '' : Math.max(0, Number(v)));
-                                    }}
-                                    placeholder="Min ↑"
-                                    className="w-24 px-2 py-2 font-['Press_Start_2P'] text-xs border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none"
-                                />
+                                {/* Right group: Min, Sort, Count */}
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    <input
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
+                                        value={minUpvotes === '' ? '' : String(minUpvotes)}
+                                        onChange={(e) => {
+                                            const v = e.target.value.replace(/\D+/g, '').slice(0, 4);
+                                            const n = v === '' ? '' : Math.max(0, Math.min(9999, Number(v)));
+                                            setMinUpvotes(n);
+                                        }}
+                                        maxLength={4}
+                                        placeholder="Min ↑"
+                                        className="w-24 h-9 px-3 text-[11px] leading-none font-['Press_Start_2P'] pixel-control pixel-focus"
+                                        aria-label="Minimum upvotes"
+                                    />
 
-                                {/* Sort selector */}
-                                <select
-                                    value={sortBy}
-                                    onChange={(e) => setSortBy(e.target.value as any)}
-                                    className="px-3 py-3 font-['Press_Start_2P'] text-xs border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none"
-                                    aria-label="Sort results"
-                                >
-                                    <option value="relevance">Sort: Relevance</option>
-                                    <option value="upvotes">Sort: Most Upvoted</option>
-                                    <option value="newest">Sort: Newest</option>
-                                </select>
-
-                                {/* Results count and inline spinner */}
-                                <div className="flex items-center gap-2">
-                                    {isRefreshing && (
-                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black" />
-                                    )}
-                                    <div className="font-['Press_Start_2P'] text-xs text-gray-700">{totalCount} results</div>
+                                    <select
+                                        value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value as any)}
+                                        className="h-9 px-3 text-[11px] leading-none font-['Press_Start_2P'] pixel-control pixel-focus"
+                                        aria-label="Sort results"
+                                    >
+                                        <option value="relevance">Sort: Relevance</option>
+                                        <option value="upvotes">Sort: Most Upvoted</option>
+                                        <option value="newest">Sort: Newest</option>
+                                    </select>
+                                    <div className="flex items-center gap-2 pl-1">
+                                        <div className="h-[38px] flex flex-col justify-center leading-[19px] text-[16px] font-['Press_Start_2P'] text-gray-700 select-none tabular-nums text-right">
+                                            <span className="leading-[19px]">{totalCount}</span>
+                                            <span className="leading-[19px]">results</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                {isLoading && (
-                    <div className="flex flex-col items-center justify-center py-8">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
-                        <div className="text-center font-['Press_Start_2P']">Loading beatmaps...</div>
-                    </div>
-                )}
                 {error && (
                     <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
                         <strong className="font-['Press_Start_2P'] block mb-2">Error:</strong>
                         <p className="font-['Press_Start_2P'] text-sm">{error}</p>
                     </div>
                 )}
-                {!isLoading && !error && (
+                {!error && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {results.length === 0 && (
+                        {results.length === 0 && !isLoading && (
                             <div className="col-span-full text-center font-['Press_Start_2P'] py-8">
                                 No beatmaps found. Try refreshing the page.
                             </div>

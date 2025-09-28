@@ -135,6 +135,78 @@ body {
   box-shadow: 2px 2px 0 0 rgba(0,0,0,1);
 }
 
+/* Pixel controls: consistent height and outline-based focus */
+.pixel-control {
+  border: 1px solid #000;
+  background: #fff;
+  box-shadow: 4px 4px 0 0 rgba(0,0,0,1);
+}
+
+.pixel-input,
+input.pixel-input {
+  font-family: 'Press Start 2P', monospace;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.pixel-select,
+select.pixel-select {
+  font-family: 'Press Start 2P', monospace;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Ensure search input reserves space for icon and clear button even when pixel-input padding applies */
+.search-input-with-icon {
+  padding-left: 32px !important;
+  padding-right: 36px !important;
+}
+
+.pixel-chip {
+  padding: 0 10px;
+  height: 32px;
+  line-height: 32px;
+  border: 1px solid #000;
+  background: #fff;
+  box-shadow: 4px 4px 0 0 rgba(0,0,0,1);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+  transition: transform .1s ease, box-shadow .1s ease, background-color .15s ease, color .15s ease;
+}
+
+.pixel-chip:hover {
+  transform: translate(1px, 1px);
+  box-shadow: 3px 3px 0 0 rgba(0,0,0,1);
+}
+
+.pixel-chip[aria-pressed="true"],
+.pixel-chip--active {
+  background: #7c3aed; /* purple-600 */
+  color: #fff;
+}
+
+.pixel-focus:focus {
+  outline: 2px solid #000;
+  outline-offset: 0;
+}
+
+/* Search input adornments */
+.search-wrapper { position: relative; }
+.search-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  width: 14px; height: 14px; color: #000; pointer-events: none;
+}
+.search-clear {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  height: 24px; width: 24px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid #000; background: #fff; box-shadow: 3px 3px 0 0 rgba(0,0,0,1);
+}
+.search-clear:hover {
+  transform: translateY(-50%) translate(1px, 1px);
+  box-shadow: 2px 2px 0 0 rgba(0,0,0,1);
+}
+.search-input-with-icon { padding-left: 32px; padding-right: 36px; }
+
 /* When a search card is cloned into the animated banner, disable line clamping so titles wrap */
 #animated-banner-card .line-clamp-1 {
   display: block !important;
