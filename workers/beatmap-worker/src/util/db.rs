@@ -16,6 +16,49 @@ pub enum SortBy {
     Newest,
 }
 
+impl DatabaseBackend {
+    pub async fn set_user_moderator(&self, user_id: &str, is_mod: bool) -> Result<()> {
+        let stmt = self.db.prepare("UPDATE users SET is_moderator = ?2 WHERE id = ?1");
+        stmt.bind(&[JsValue::from_str(user_id), JsValue::from_f64(if is_mod { 1.0 } else { 0.0 })])?
+            .run()
+            .await
+            .map_err(|e| Error::RustError(format!("d1 set moderator: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn is_user_moderator(&self, user_id: &str) -> Result<bool> {
+        let stmt = self.db.prepare("SELECT is_moderator FROM users WHERE id = ?1");
+        let res = stmt.bind(&[JsValue::from_str(user_id)])?.all().await?;
+        let rows = Self::rows(res);
+        let val = rows.first().and_then(|r| r.get("is_moderator")).and_then(Self::parse_bool).unwrap_or(false);
+        Ok(val)
+    }
+
+    pub async fn set_map_deleted(&self, map_id: &str, deleted: bool, who: Option<&str>) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let stmt = if deleted {
+            self.db.prepare(&format!("UPDATE {MAPS_TABLE} SET deleted = 1, deleted_at = ?2, deleted_by = ?3 WHERE id = ?1"))
+        } else {
+            self.db.prepare(&format!("UPDATE {MAPS_TABLE} SET deleted = 0, deleted_at = NULL, deleted_by = NULL, update_date = ?2 WHERE id = ?1"))
+        };
+        let binds: Vec<JsValue> = if deleted {
+            vec![JsValue::from_str(map_id), JsValue::from_str(&now), JsValue::from_str(who.unwrap_or(""))]
+        } else {
+            vec![JsValue::from_str(map_id), JsValue::from_str(&now)]
+        };
+        stmt.bind(&binds[..])?.run().await.map_err(|e| Error::RustError(format!("d1 set map deleted: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn is_map_deleted(&self, map_id: &str) -> Result<bool> {
+        let stmt = self.db.prepare(&format!("SELECT deleted FROM {MAPS_TABLE} WHERE id = ?1"));
+        let res = stmt.bind(&[JsValue::from_str(map_id)])?.all().await?;
+        let rows = Self::rows(res);
+        let val = rows.first().and_then(|r| r.get("deleted")).and_then(Self::parse_bool).unwrap_or(false);
+        Ok(val)
+    }
+}
+
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct SearchParams {
     pub query: String,
@@ -40,6 +83,16 @@ pub trait Database {
     async fn delete_map(&self, map_id: &str) -> Result<()>;
 
     async fn create_map(&self, new_map: &NewMap<'_>) -> Result<()>;
+
+    async fn find_map_by_identity(
+        &self,
+        song: &str,
+        artist: &str,
+        charter: &str,
+        charter_uid: Uuid,
+    ) -> Result<Option<Uuid>>;
+
+    async fn update_map_metadata(&self, updated: &UpdateMap<'_>) -> Result<()>;
 }
 
 pub struct DatabaseBackend {
@@ -60,6 +113,17 @@ pub struct NewMap<'a> {
     pub description: &'a str,
     pub artist_list: &'a str,
     pub image: bool,
+}
+
+#[derive(Debug)]
+pub struct UpdateMap<'a> {
+    pub id: Uuid,
+    pub song: &'a str,
+    pub artist: &'a str,
+    pub charter: &'a str,
+    pub description: &'a str,
+    pub artist_list: &'a str,
+    pub image: Option<bool>,
 }
 
 impl DatabaseBackend {
@@ -110,10 +174,7 @@ impl DatabaseBackend {
     }
 
     fn rows(result: D1Result) -> Vec<std::collections::BTreeMap<String, D1Value>> {
-        match result.results::<std::collections::BTreeMap<String, D1Value>>() {
-            Ok(rows) => rows,
-            Err(_) => Vec::new(),
-        }
+        result.results::<std::collections::BTreeMap<String, D1Value>>().unwrap_or_default()
     }
 
     fn group_maps(
@@ -166,6 +227,9 @@ impl Database for DatabaseBackend {
         let mut where_binds: Vec<JsValue> = Vec::new();
         let mut relevance_binds: Vec<JsValue> = Vec::new();
 
+        // Exclude soft-deleted maps by default
+        where_parts.push("m.deleted = 0".to_string());
+
         // Text filter: multi-term AND; for each term, require a match in any target field
         if !trimmed.is_empty() {
             let terms: Vec<&str> = trimmed.split_whitespace().filter(|t| !t.is_empty()).collect();
@@ -191,18 +255,41 @@ impl Database for DatabaseBackend {
             where_binds.push(JsValue::from_f64(minu as f64));
         }
 
-        // Difficulties IN list
+        // Difficulty buckets by numeric ranges: [1,2), [2,3), [3,4), [4,5); Special is outside [1,5)
         if !params.difficulties.is_empty() {
-            let mut placeholders: Vec<String> = Vec::new();
+            // Build OR conditions for selected buckets
+            let mut conds: Vec<String> = Vec::new();
+            let mut has_easy = false;
+            let mut has_hard = false;
+            let mut has_challenge = false;
+            let mut has_apoc = false;
+            let mut has_special = false;
+            // Define bucket ranges
+            let easy_rng = "(dd.difficulty >= 1 AND dd.difficulty < 2)";
+            let hard_rng = "(dd.difficulty >= 2 AND dd.difficulty < 3)";
+            let challenge_rng = "(dd.difficulty >= 3 AND dd.difficulty < 4)";
+            let apoc_rng = "(dd.difficulty >= 4 AND dd.difficulty < 5)";
             for d in &params.difficulties {
-                let p = format!("?{}", idx); idx += 1;
-                placeholders.push(p);
-                where_binds.push(JsValue::from_str(d));
+                let dl = d.trim().to_lowercase();
+                match dl.as_str() {
+                    "easy" => { if !has_easy { conds.push(easy_rng.to_string()); has_easy = true; } },
+                    "hard" => { if !has_hard { conds.push(hard_rng.to_string()); has_hard = true; } },
+                    "challenge" => { if !has_challenge { conds.push(challenge_rng.to_string()); has_challenge = true; } },
+                    "apocraphyia" => { if !has_apoc { conds.push(apoc_rng.to_string()); has_apoc = true; } },
+                    "special" => { if !has_special {
+                        // Special: outside [1,5)
+                        conds.push(format!("(dd.difficulty < 1 OR dd.difficulty >= 5)"));
+                        has_special = true;
+                    } },
+                    _ => {}
+                }
             }
-            where_parts.push(format!(
-                "EXISTS (SELECT 1 FROM {DIFFICULTIES_TABLE} dd WHERE dd.map_id = m.id AND dd.display IN ({}))",
-                placeholders.join(", ")
-            ));
+            if !conds.is_empty() {
+                where_parts.push(format!(
+                    "EXISTS (SELECT 1 FROM {DIFFICULTIES_TABLE} dd WHERE dd.map_id = m.id AND ({}))",
+                    conds.join(" OR ")
+                ));
+            }
         }
 
         let where_sql = if where_parts.is_empty() { String::new() } else { format!("WHERE {}", where_parts.join(" AND ")) };
@@ -237,7 +324,7 @@ impl Database for DatabaseBackend {
                     relevance_binds.push(JsValue::from_str(&format!("{}%", trimmed)));
 
                     // Exact artist equality boost (case-insensitive)
-                    let ae = format!("?{}", idx); idx += 1;
+                    let ae = format!("?{}", idx);
                     relevance_binds.push(JsValue::from_str(&trimmed));
 
                     // Compute relevance flags in SELECT and later order by a weighted composite score using these flags
@@ -316,7 +403,7 @@ impl Database for DatabaseBackend {
         let count_res = count_stmt.all().await?;
         let total_count: u64 = match count_res.results::<std::collections::BTreeMap<String, D1Value>>() {
             Ok(rows) => rows
-                .get(0)
+                .first()
                 .and_then(|r| r.get("cnt"))
                 .and_then(Self::parse_u64)
                 .unwrap_or(0),
@@ -339,17 +426,17 @@ impl Database for DatabaseBackend {
         let mut statements = Vec::new();
         statements.push(
             self.db
-                .prepare(&format!(
+                .prepare(format!(
                     "INSERT OR IGNORE INTO {USER_UPVOTES_TABLE}(user_id, map_id) VALUES (?1, ?2)"
                 ))
-                .bind(&[JsValue::from_str(&user_id), JsValue::from_str(&map_id)])?,
+                .bind(&[JsValue::from_str(user_id), JsValue::from_str(map_id)])?,
         );
         statements.push(
             self.db
-                .prepare(&format!(
+                .prepare(format!(
                     "UPDATE {MAPS_TABLE} SET upvotes = upvotes + 1 WHERE id = ?1"
                 ))
-                .bind(&[JsValue::from_str(&map_id)])?,
+                .bind(&[JsValue::from_str(map_id)])?,
         );
         self
             .db
@@ -363,17 +450,17 @@ impl Database for DatabaseBackend {
         let mut statements = Vec::new();
         statements.push(
             self.db
-                .prepare(&format!(
+                .prepare(format!(
                     "DELETE FROM {USER_UPVOTES_TABLE} WHERE user_id = ?1 AND map_id = ?2"
                 ))
-                .bind(&[JsValue::from_str(&user_id), JsValue::from_str(&map_id)])?,
+                .bind(&[JsValue::from_str(user_id), JsValue::from_str(map_id)])?,
         );
         statements.push(
             self.db
-                .prepare(&format!(
+                .prepare(format!(
                     "UPDATE {MAPS_TABLE} SET upvotes = CASE WHEN upvotes > 0 THEN upvotes - 1 ELSE 0 END WHERE id = ?1"
                 ))
-                .bind(&[JsValue::from_str(&map_id)])?,
+                .bind(&[JsValue::from_str(map_id)])?,
         );
         self
             .db
@@ -385,10 +472,10 @@ impl Database for DatabaseBackend {
 
     async fn usersongs(&self, user_id: &str) -> Result<Vec<BeatMap>> {
         let sql = format!(
-            "SELECT m.id, m.song, m.artist, m.charter, m.charter_uid, m.description, m.artist_list, m.image, m.upvotes, m.upload_date, m.update_date, d.display AS level_display, d.difficulty AS level_difficulty FROM {MAPS_TABLE} m LEFT JOIN {DIFFICULTIES_TABLE} d ON d.map_id = m.id WHERE m.charter_uid = ?1 ORDER BY m.upload_date DESC LIMIT 100"
+            "SELECT m.id, m.song, m.artist, m.charter, m.charter_uid, m.description, m.artist_list, m.image, m.upvotes, m.upload_date, m.update_date, d.display AS level_display, d.difficulty AS level_difficulty FROM {MAPS_TABLE} m LEFT JOIN {DIFFICULTIES_TABLE} d ON d.map_id = m.id WHERE m.charter_uid = ?1 AND m.deleted = 0 ORDER BY m.upload_date DESC LIMIT 100"
         );
         let stmt = self.db.prepare(&sql);
-        let result = stmt.bind(&[JsValue::from_str(&user_id.to_string())])?.all().await?;
+        let result = stmt.bind(&[JsValue::from_str(user_id)])?.all().await?;
         Ok(Self::group_maps(Self::rows(result)))
     }
 
@@ -396,18 +483,18 @@ impl Database for DatabaseBackend {
         let mut statements = Vec::new();
         statements.push(
             self.db
-                .prepare(&format!("DELETE FROM {DIFFICULTIES_TABLE} WHERE map_id = ?1"))
-                .bind(&[JsValue::from_str(&map_id)])?,
+                .prepare(format!("DELETE FROM {DIFFICULTIES_TABLE} WHERE map_id = ?1"))
+                .bind(&[JsValue::from_str(map_id)])?,
         );
         statements.push(
             self.db
-                .prepare(&format!("DELETE FROM {USER_UPVOTES_TABLE} WHERE map_id = ?1"))
-                .bind(&[JsValue::from_str(&map_id)])?,
+                .prepare(format!("DELETE FROM {USER_UPVOTES_TABLE} WHERE map_id = ?1"))
+                .bind(&[JsValue::from_str(map_id)])?,
         );
         statements.push(
             self.db
-                .prepare(&format!("DELETE FROM {MAPS_TABLE} WHERE id = ?1"))
-                .bind(&[JsValue::from_str(&map_id)])?,
+                .prepare(format!("DELETE FROM {MAPS_TABLE} WHERE id = ?1"))
+                .bind(&[JsValue::from_str(map_id)])?,
         );
         self
             .db
@@ -419,7 +506,7 @@ impl Database for DatabaseBackend {
 
     async fn create_map(&self, new_map: &NewMap<'_>) -> Result<()> {
         let now = Utc::now().to_rfc3339();
-        let stmt = self.db.prepare(&format!(
+        let stmt = self.db.prepare(format!(
             "INSERT INTO {MAPS_TABLE}(id, song, artist, charter, charter_uid, description, artist_list, image, upvotes, upload_date, update_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?9)"
         ));
         stmt.bind(&[
@@ -433,6 +520,66 @@ impl Database for DatabaseBackend {
             JsValue::from_f64(if new_map.image { 1.0 } else { 0.0 }),
             JsValue::from_str(&now),
         ])?.run().await.map_err(|e| Error::RustError(format!("d1 insert map: {e}")))?;
+        Ok(())
+    }
+
+    async fn find_map_by_identity(
+        &self,
+        song: &str,
+        artist: &str,
+        charter: &str,
+        charter_uid: Uuid,
+    ) -> Result<Option<Uuid>> {
+        let sql = format!(
+            "SELECT id FROM {MAPS_TABLE}
+             WHERE charter_uid = ?4
+               AND song = ?1
+               AND artist = ?2
+               AND charter = ?3
+             LIMIT 1"
+        );
+        let stmt = self.db.prepare(&sql);
+        let res = stmt
+            .bind(&[
+                JsValue::from_str(song),
+                JsValue::from_str(artist),
+                JsValue::from_str(charter),
+                JsValue::from_str(&charter_uid.to_string()),
+            ])?
+            .all()
+            .await?;
+        let rows = Self::rows(res);
+        let id = rows
+            .first()
+            .and_then(|r| r.get("id"))
+            .and_then(Self::parse_uuid);
+        Ok(id)
+    }
+
+    async fn update_map_metadata(&self, updated: &UpdateMap<'_>) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let stmt = self.db.prepare(format!(
+            "UPDATE {MAPS_TABLE} SET song = ?1, artist = ?2, charter = ?3, description = ?4, artist_list = ?5, image = COALESCE(?6, image), update_date = ?7 WHERE id = ?8"
+        ));
+        let image_val = match updated.image {
+            Some(true) => JsValue::from_f64(1.0),
+            Some(false) => JsValue::from_f64(0.0),
+            None => JsValue::NULL,
+        };
+        stmt
+            .bind(&[
+                JsValue::from_str(updated.song),
+                JsValue::from_str(updated.artist),
+                JsValue::from_str(updated.charter),
+                JsValue::from_str(updated.description),
+                JsValue::from_str(updated.artist_list),
+                image_val,
+                JsValue::from_str(&now),
+                JsValue::from_str(&updated.id.to_string()),
+            ])?
+            .run()
+            .await
+            .map_err(|e| Error::RustError(format!("d1 update map: {e}")))?;
         Ok(())
     }
 }

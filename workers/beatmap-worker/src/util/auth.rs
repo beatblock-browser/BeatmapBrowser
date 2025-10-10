@@ -19,7 +19,8 @@ pub fn generate_jwt(env: &Env, user_id: &str) -> Result<String> {
     let claims = Claims {
         sub: user_id.to_string(),
         iat: now.timestamp(),
-        exp: (now + Duration::hours(1)).timestamp(),
+        // Extend expiry to 12 hours to reduce frequent refresh prompts
+        exp: (now + Duration::hours(12)).timestamp(),
     };
     let token = encode(
         &Header::default(),
@@ -42,12 +43,52 @@ pub fn verify_jwt(env: &Env, token: &str) -> Result<Claims> {
 
 pub fn require_auth(req: &Request, env: &Env) -> Result<Claims> {
     let headers = req.headers();
-    let Ok(Some(authorization)) = headers.get("Authorization") else {
-        return Err(Error::RustError("missing authorization".into()));
-    };
-    let token = authorization.strip_prefix("Bearer ").unwrap_or("");
-    if token.is_empty() {
-        return Err(Error::RustError("missing bearer token".into()));
+    // Prefer Authorization header for backward compatibility
+    if let Ok(Some(authorization)) = headers.get("Authorization") {
+        let token = authorization.strip_prefix("Bearer ").unwrap_or("");
+        if token.is_empty() {
+            return Err(Error::RustError("missing bearer token".into()));
+        }
+        return verify_jwt(env, token);
     }
-    verify_jwt(env, token)
+
+    // Fallback to HttpOnly cookie session: Cookie: session=<jwt>
+    if let Ok(Some(cookie_header)) = headers.get("Cookie") {
+        for part in cookie_header.split(';') {
+            let trimmed = part.trim();
+            if let Some(v) = trimmed.strip_prefix("session=") {
+                let token = v.trim();
+                if !token.is_empty() {
+                    return verify_jwt(env, token);
+                }
+            }
+        }
+    }
+    Err(Error::RustError("missing authorization".into()))
+}
+
+pub fn optional_auth(req: &Request, env: &Env) -> Option<Claims> {
+    let headers = req.headers();
+    if let Ok(Some(authorization)) = headers.get("Authorization") {
+        let token = authorization.strip_prefix("Bearer ").unwrap_or("");
+        if !token.is_empty() {
+            if let Ok(claims) = verify_jwt(env, token) {
+                return Some(claims);
+            }
+        }
+    }
+    if let Ok(Some(cookie_header)) = headers.get("Cookie") {
+        for part in cookie_header.split(';') {
+            let trimmed = part.trim();
+            if let Some(v) = trimmed.strip_prefix("session=") {
+                let token = v.trim();
+                if !token.is_empty() {
+                    if let Ok(claims) = verify_jwt(env, token) {
+                        return Some(claims);
+                    }
+                }
+            }
+        }
+    }
+    None
 }

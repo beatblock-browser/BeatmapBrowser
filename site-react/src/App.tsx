@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import HomePage from './pages/home-page';
 import SongPage from './pages/song-page';
 import NotFound from './pages/not-found';
-import { SearchCacheProvider } from "@/context/SearchCache.tsx";
+import Topbar from './components/Topbar';
+import AccountPage from './pages/account-page';
+import UploadPage from './pages/upload-page';
+import { initAuthSession } from '@/lib/auth_session';
 
 function AppRoutes() {
     const location = useLocation();
@@ -11,12 +14,18 @@ function AppRoutes() {
 
     return (
         <>
+            <Topbar />
             {/* Render the underlying routes at the background location to keep the previous page mounted */}
-            <Routes location={state?.backgroundLocation || location}>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/song/:id" element={<SongPage />} />
-                <Route path="*" element={<NotFound />} />
-            </Routes>
+            <div className="pt-14">
+                <Routes location={state?.backgroundLocation || location}>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/account" element={<AccountPage />} />
+                    <Route path="/upload" element={<UploadPage />} />
+                    <Route path="/song/:id" element={<SongPage />} />
+                    <Route path="/404" element={<NotFound />} />
+                    <Route path="*" element={<NotFound />} />
+                </Routes>
+            </div>
 
             {/* If we have a background location, render the song route again as an overlay/modal */}
             {state?.backgroundLocation && (
@@ -29,11 +38,12 @@ function AppRoutes() {
 }
 
 export default function App() {
+    useEffect(() => {
+        initAuthSession();
+    }, []);
     return (
-        <SearchCacheProvider>
-            <Router>
-                <AppRoutes />
-            </Router>
-        </SearchCacheProvider>
+        <Router>
+            <AppRoutes />
+        </Router>
     );
 }
