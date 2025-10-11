@@ -5,6 +5,7 @@ import { useSearchCache } from "@/context/SearchCache";
 import { useStore } from "@/lib/store";
 import { apiFetch } from "@/lib/api";
 import SongCard from "@/components/SongCard";
+import TransitionOverlay from "@/components/TransitionOverlay";
 
 // Preferred difficulty order; also used to seed the available list so all appear
 const DIFFICULTY_ORDER: string[] = [
@@ -44,11 +45,15 @@ export default function HomePage() {
     const [jwt, setJwt] = useState<string | null>(null);
     const [titleVisible, setTitleVisible] = useState(true);
     const [transitioningCard, setTransitioningCard] = useState<string | null>(null);
-    const [showSongPage, setShowSongPage] = useState(false);
     const [cardTransformed, setCardTransformed] = useState(false);
     const [isReverseAnimation, setIsReverseAnimation] = useState(false);
-    const [shouldFadeOut, setShouldFadeOut] = useState(false);
     const [hideButtons, setHideButtons] = useState<string | null>(null);
+    // Overlay FLIP animation state
+    const [overlayActive, setOverlayActive] = useState(false);
+    const [overlayPhase, setOverlayPhase] = useState<"forward" | "reverse" | null>(null);
+    const [overlayMap, setOverlayMap] = useState<BeatMap | null>(null);
+    const [overlayFromCardRect, setOverlayFromCardRect] = useState<DOMRect | null>(null);
+    const [overlayFromTextRect, setOverlayFromTextRect] = useState<DOMRect | null>(null);
     // Search and filter state
     const [query, setQuery] = useState("");
     const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -429,340 +434,84 @@ export default function HomePage() {
         };
     }, [selectedMap]);
 
-    // Handle card transition animation
+    // Handle card transition animation (handled by TransitionOverlay component)
     useEffect(() => {
-        if (transitioningCard && selectedMap && !isReverseAnimation) {
-            const originalCardElement = cardRefs.current[transitioningCard];
-            const selectedMapData = results.find(map => map.id === transitioningCard);
-            
-            if (originalCardElement && selectedMapData) {
-                // Get the card's current position and store it for reverse animation
-                const rect = originalCardElement.getBoundingClientRect();
-                originalCardPosition.current[transitioningCard] = rect;
-                
-                // Create a clone of the card for animation
-                const animatedCard = originalCardElement.cloneNode(true) as HTMLDivElement;
-                const animatedText = animatedCard.querySelector('[data-text-container]') as HTMLDivElement;
-                
-                // Remove any refs and event listeners from the clone
-                animatedCard.removeAttribute('data-*');
-                animatedCard.onclick = null;
-                
-                // Hide buttons in the animated clone more aggressively
-                const actionsEl = animatedCard.querySelector('[data-actions]') as HTMLDivElement | null;
-                if (actionsEl) {
-                    actionsEl.style.opacity = '0';
-                    actionsEl.style.transform = 'scale(0.9)';
-                    actionsEl.style.pointerEvents = 'none';
-                }
-
-                // Hide difficulty chips to match the banner layout (they don't appear on the song-page banner)
-                const difficultyContainers = animatedCard.querySelectorAll('[data-difficulty]');
-                difficultyContainers.forEach((el) => {
-                    (el as HTMLElement).style.display = 'none';
-                });
-                
-                // Add the animated card to the document
-                document.body.appendChild(animatedCard);
-                
-                // Create a temporary element with exact same CSS as the banner to get precise dimensions
-                const tempBanner = document.createElement('div');
-                tempBanner.style.position = 'absolute';
-                tempBanner.style.top = '0';
-                tempBanner.style.left = '0';
-                tempBanner.style.right = '0';
-                tempBanner.style.height = 'calc(100vw * 9 / 32)';
-                tempBanner.style.maxHeight = '320px';
-                tempBanner.style.visibility = 'hidden';
-                tempBanner.style.pointerEvents = 'none';
-                document.body.appendChild(tempBanner);
-                
-                const bannerRect = tempBanner.getBoundingClientRect();
-                const viewportWidth = bannerRect.width;
-                const bannerHeight = bannerRect.height;
-                
-                // Clean up temp element
-                document.body.removeChild(tempBanner);
-                
-                // Position clone exactly at original card location
-                animatedCard.style.position = 'fixed';
-                animatedCard.style.zIndex = '50';
-                animatedCard.style.top = `${rect.top}px`;
-                animatedCard.style.left = `${rect.left}px`;
-                animatedCard.style.width = `${rect.width}px`;
-                animatedCard.style.height = `${rect.height}px`;
-                animatedCard.style.transformOrigin = 'top left';
-                animatedCard.style.transition = 'transform 400ms ease-out';
-                animatedCard.style.visibility = 'visible'; // Override any invisible class
-                animatedCard.style.opacity = '1'; // Ensure it's fully visible
-                animatedCard.id = 'animated-banner-card'; // Add specific ID for tracking
-                
-                if (animatedText) {
-                    animatedText.style.transformOrigin = 'left center';
-                    animatedText.style.transition = 'transform 400ms ease-out';
-                    animatedText.style.willChange = 'transform, padding';
-                    // Capture original paddings so we can compensate during inverse scaling
-                    const cs = getComputedStyle(animatedText);
-                    (animatedText as any).dataset.padLeftOriginal = cs.paddingLeft || '0px';
-                    (animatedText as any).dataset.padRightOriginal = cs.paddingRight || '0px';
-                    (animatedText as any).dataset.padTopOriginal = cs.paddingTop || '0px';
-                    (animatedText as any).dataset.padBottomOriginal = cs.paddingBottom || '0px';
-                }
-                
-                // Trigger the transforms on next frame
-                requestAnimationFrame(() => {
-                    // Calculate translation and scaling for card
-                    const translateX = -rect.left;
-                    const translateY = -rect.top;
-                    const scaleX = viewportWidth / rect.width;
-                    const scaleY = bannerHeight / rect.height;
-                    
-                    // Apply translation and scaling to animated card
-                    animatedCard.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
-                    
-                    // Apply inverse scaling to text to keep it at original size,
-                    // translate vertically to keep centered as height grows,
-                    // and compensate for padding by scaling padding on all sides
-                    if (animatedText) {
-                        const deltaY = (bannerHeight - rect.height) / 2;
-                        const padLeftOriginal = parseFloat((animatedText as any).dataset.padLeftOriginal || '0') || 0;
-                        const padRightOriginal = parseFloat((animatedText as any).dataset.padRightOriginal || '0') || 0;
-                        const padTopOriginal = parseFloat((animatedText as any).dataset.padTopOriginal || '0') || 0;
-                        const padBottomOriginal = parseFloat((animatedText as any).dataset.padBottomOriginal || '0') || 0;
-                        // Scale paddings so that after inverse scale the perceived padding matches the original
-                        animatedText.style.paddingLeft = `${padLeftOriginal * scaleX}px`;
-                        animatedText.style.paddingRight = `${padRightOriginal * scaleX}px`;
-                        animatedText.style.paddingTop = `${padTopOriginal * scaleY}px`;
-                        animatedText.style.paddingBottom = `${padBottomOriginal * scaleY}px`;
-                        animatedText.style.transform = `translate(0px, ${deltaY}px) scale(${1/scaleX}, ${1/scaleY})`;
-                    }
-                    
-                    setCardTransformed(true);
-
-                    // Skip horizontal correction; inverse scaling and padding adjustments are sufficient and stable
-                });
-            }
-        }
+        // no-op
     }, [transitioningCard, selectedMap, isReverseAnimation, results]);
 
-    // Handle reverse animation when closing
-    useEffect(() => {
-        if (isReverseAnimation && transitioningCard) {
-            // Keep song page visible during reverse animation to allow fade out
-            // setShowSongPage(false); // Removed - let the fade out handle this
-            
-            const originalRect = originalCardPosition.current[transitioningCard];
-            
-            // Find the existing animated card that's acting as the banner
-            const existingAnimatedCard = document.getElementById('animated-banner-card') as HTMLDivElement;
-            
-            if (existingAnimatedCard && originalRect) {
-                const animatedTextOverlay = document.getElementById('animated-banner-text') as HTMLDivElement | null;
+    // Reverse is handled by starting a reverse overlay when closing
+    useEffect(() => {}, [isReverseAnimation, transitioningCard, results]);
 
-                // Re-enable truncation immediately to avoid snapping as we shrink
-                existingAnimatedCard.classList.add('reclamp');
 
-                // Get current banner dimensions
-                const currentRect = existingAnimatedCard.getBoundingClientRect();
-                const viewportWidth = currentRect.width;
-                const bannerHeight = currentRect.height;
-
-                // Do not force width/height, preserve inset-0 for proper centering during reverse
-                // Text overlay exists independently
-
-                // Start animation
-                requestAnimationFrame(() => {
-                    existingAnimatedCard.style.transition = 'transform 400ms ease-out';
-                    if (animatedTextOverlay) animatedTextOverlay.style.transition = 'transform 400ms ease-out, width 400ms ease-out';
-
-                    requestAnimationFrame(() => {
-                        // Animate back to original position
-                        existingAnimatedCard.style.transform = `translate(0px, 0px) scale(1, 1)`;
-                        if (animatedTextOverlay) {
-                            const textRect = originalTextPosition.current[transitioningCard];
-                            if (textRect) {
-                                // Return overlay back to its original card text rect
-                                animatedTextOverlay.style.width = `${textRect.width}px`;
-                                animatedTextOverlay.style.transform = `translate(0px, 0px)`;
-                            }
-                        }
-
-                        // Fallback cleanup in case fade out handler doesn't complete properly
-                        setTimeout(() => {
-                            const remainingCard = document.getElementById('animated-banner-card');
-                            if (remainingCard && remainingCard.parentNode) {
-                                remainingCard.parentNode.removeChild(remainingCard);
-                            }
-                            const remainingText = document.getElementById('animated-banner-text');
-                            if (remainingText && remainingText.parentNode) {
-                                remainingText.parentNode.removeChild(remainingText);
-                            }
-                        }, 450); // Slightly longer than animation to be safe
-                    });
-                });
-            }
-        }
-    }, [isReverseAnimation, transitioningCard, results]);
-
-    // Handle song page visibility based on selectedMap
-    useEffect(() => {
-        if (selectedMap && !showSongPage && cardTransformed && !isReverseAnimation) {
-            // Card transition completes, show song page (keep animated card as banner)
-            const timer = setTimeout(() => {
-                setShowSongPage(true);
-                // Don't remove animated clones - they stay as the banner
-            }, 400);
-            return () => clearTimeout(timer);
-        } else if (!selectedMap && showSongPage && !isReverseAnimation) {
-            // Hide song page and reset transition state (only if not doing reverse animation)
-                            setShowSongPage(false);
-                setTransitioningCard(null);
-                setCardTransformed(false);
-                setShouldFadeOut(false);
-                setHideButtons(null);
-        }
-    }, [selectedMap, showSongPage, cardTransformed, isReverseAnimation]);
-
-    // Handle window resize for animated card
-    useEffect(() => {
-        const handleResize = () => {
-            const animatedCard = document.getElementById('animated-banner-card') as HTMLDivElement;
-            if (animatedCard && transitioningCard && cardTransformed && !isReverseAnimation) {
-                // Recalculate banner dimensions
-                const tempBanner = document.createElement('div');
-                tempBanner.style.position = 'absolute';
-                tempBanner.style.top = '0';
-                tempBanner.style.left = '0';
-                tempBanner.style.right = '0';
-                tempBanner.style.height = 'calc(100vw * 9 / 32)';
-                tempBanner.style.maxHeight = '320px';
-                tempBanner.style.visibility = 'hidden';
-                tempBanner.style.pointerEvents = 'none';
-                document.body.appendChild(tempBanner);
-                
-                const bannerRect = tempBanner.getBoundingClientRect();
-                const newViewportWidth = bannerRect.width;
-                const newBannerHeight = bannerRect.height;
-                
-                document.body.removeChild(tempBanner);
-                
-                // Get original card dimensions
-                const originalRect = originalCardPosition.current[transitioningCard];
-                if (originalRect) {
-                    // Update animated card to new banner size
-                    animatedCard.style.width = `${newViewportWidth}px`;
-                    animatedCard.style.height = `${newBannerHeight}px`;
-                    
-                    // Recalculate and apply transforms
-                    const scaleX = newViewportWidth / originalRect.width;
-                    const scaleY = newBannerHeight / originalRect.height;
-                    
-                    animatedCard.style.transform = `translate(${-originalRect.left}px, ${-originalRect.top}px) scale(${scaleX}, ${scaleY})`;
-                    
-                    // Update text overlay position/width on resize
-                    const animatedTextOverlay = document.getElementById('animated-banner-text') as HTMLDivElement | null;
-                    const origTextRect = originalTextPosition.current[transitioningCard];
-                    if (animatedTextOverlay && origTextRect) {
-                        const paddingCss = getComputedStyle(animatedTextOverlay).paddingLeft || '24px';
-                        const pad = parseFloat(paddingCss) || 24;
-                        const targetLeft = 0 + pad;
-                        const targetTop = (newBannerHeight - origTextRect.height) / 2;
-                        const targetWidth = Math.max(0, newViewportWidth - pad * 2);
-                        animatedTextOverlay.style.width = `${targetWidth}px`;
-                        const dx = targetLeft - origTextRect.left;
-                        const dy = targetTop - origTextRect.top;
-                        animatedTextOverlay.style.transform = `translate(${dx}px, ${dy}px)`;
-                    }
-                }
-            }
-        };
-
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, [transitioningCard, cardTransformed, isReverseAnimation]);
+    // TransitionOverlay handles resize internally
+    useEffect(() => {}, [transitioningCard, cardTransformed, isReverseAnimation]);
 
     const handleCardClick = (map: BeatMap) => {
-        if (transitioningCard || isReverseAnimation) return; // Prevent clicks during any animation
+        if (overlayActive || isReverseAnimation) return; // Prevent re-entry during animation
+        // Measure rects
+        const cardEl = cardRefs.current[map.id];
+        if (!cardEl) return;
+        const rect = cardEl.getBoundingClientRect();
+        const textEl = cardEl.querySelector('[data-text-container]') as HTMLDivElement | null;
+        const textRect = textEl ? textEl.getBoundingClientRect() : null;
+        originalCardPosition.current[map.id] = rect;
+        if (textRect) originalTextPosition.current[map.id] = textRect;
 
-        // Hide buttons first
+        // Start overlay forward animation
+        setOverlayMap(map);
+        setOverlayFromCardRect(rect);
+        setOverlayFromTextRect(textRect);
+        setOverlayPhase('forward');
+        setOverlayActive(true);
+        setTransitioningCard(map.id);
         setHideButtons(map.id);
 
-        // Small delay to let button fade start before cloning the card
-        setTimeout(() => {
-            setTransitioningCard(map.id);
-            setSelectedMap(map);
-            setShouldFadeOut(false); // Reset fade out state
-
-            // Navigate to song route with background location so Home stays mounted
-            navigate(`/song/${map.id}`, { state: { backgroundLocation: location } });
-        }, 50); // Small delay for React to update DOM
+        // Navigate and set store selection while animation runs
+        setSelectedMap(map);
+        navigate(`/song/${map.id}`, { state: { backgroundLocation: location } });
     };
 
     const handleCloseSongPage = useCallback(() => {
-        console.log('Close song page clicked');
-        
-        if (selectedMap && transitioningCard) {
-            // Start both fade out and reverse animation simultaneously
-            setShouldFadeOut(true);
-            setIsReverseAnimation(true);
-            
-            // Cleanup after animations finish (reverse animation takes ~400ms)
-            setTimeout(() => {
-                console.log('Cleanup after animations complete');
+      if (!selectedMap) return;
+      const id = selectedMap.id;
+      const cardEl = cardRefs.current[id];
 
-                // Unhide the original card first so there is never a gap
-                setTransitioningCard(null);
-                setIsReverseAnimation(false);
-                setCardTransformed(false);
+      // If the original card is in view, run a reverse overlay back to it
+      if (cardEl && transitioningCard === id) {
+        const rect = originalCardPosition.current[id] || cardEl.getBoundingClientRect();
+        const textEl = cardEl.querySelector('[data-text-container]') as HTMLDivElement | null;
+        const textRect =
+          originalTextPosition.current[id] || (textEl ? textEl.getBoundingClientRect() : null);
 
-                // On the next frame, hide the song page so the card is already visible underneath
-                requestAnimationFrame(() => {
-                    setShowSongPage(false);
+        setIsReverseAnimation(true);
 
-                    // Then clean up remaining state and remove the clone after another frame
-                    setTimeout(() => {
-                        setShouldFadeOut(false);
-                        setSelectedMap(null);
+        // Start overlay animation immediately (SongPage will fade out simultaneously)
+        setOverlayMap(selectedMap);
+        setOverlayFromCardRect(rect);
+        setOverlayFromTextRect(textRect);
+        setOverlayPhase('reverse');
+        setOverlayActive(true);
+        return;
+      }
 
-                        requestAnimationFrame(() => {
-                            const animatedCard = document.getElementById('animated-banner-card');
-                            if (animatedCard && animatedCard.parentNode) {
-                                animatedCard.parentNode.removeChild(animatedCard);
-                            }
-                            setHideButtons(null);
-                        });
-                    }, 20);
-                });
-            }, 450); // After reverse animation completes (400ms) + small buffer
-        } else {
-            // Fallback for direct URL access
-            setShouldFadeOut(true);
-            
-            // Cleanup for direct URL access after fade completes
-            setTimeout(() => {
-                // Hide song page first to prevent flicker
-                setShowSongPage(false);
-                
-                                 // Then clean up states
-                 setTimeout(() => {
-                     setShouldFadeOut(false);
-                     setSelectedMap(null);
-                     setHideButtons(null); // Show buttons again
-                 }, 50);
-            }, 350); // After fade out completes (300ms) + buffer
-        }
+      // Fallback for direct URL access (no visible card to return to)
+      // Just let SongPage fade out naturally
     }, [selectedMap, transitioningCard, setSelectedMap]);
 
-    const handleFadeOutComplete = () => {
-        // This handler isn't working reliably, so we rely on the timeout-based cleanup
-        console.log('Fade out complete called but using timeout-based cleanup instead');
-    };
 
     // Listen for song closing triggered from SongPage (router back)
     useEffect(() => {
-        const listener = () => {
+        const listener = (evt: Event) => {
+            const customEvt = evt as CustomEvent<{ navigate?: () => void }>;
+            const navigateCallback = customEvt.detail?.navigate;
+            
             // Mirror clicking the back button overlay
             handleCloseSongPage();
+            
+            // Navigate after overlay animation completes
+            if (navigateCallback) {
+                setTimeout(() => navigateCallback(), 450);
+            }
         };
         window.addEventListener('song:closing', listener as EventListener);
         return () => window.removeEventListener('song:closing', listener as EventListener);
@@ -864,6 +613,33 @@ export default function HomePage() {
 
     return (
         <div className="relative min-h-screen">
+            {/* Transition overlay for robust FLIP animation */}
+            {overlayActive && overlayMap && overlayFromCardRect && overlayPhase && (
+                <TransitionOverlay
+                    map={overlayMap}
+                    fromCardRect={overlayFromCardRect}
+                    fromTextRect={overlayFromTextRect}
+                    phase={overlayPhase}
+                    onDone={() => {
+                        if (overlayPhase === 'forward') {
+                            setCardTransformed(true);
+                        } else {
+                            // reverse cleanup
+                            setTransitioningCard(null);
+                            setIsReverseAnimation(false);
+                            setCardTransformed(false);
+                            setSelectedMap(null);
+                            setHideButtons(null);
+                        }
+                        // Clean up overlay state
+                        setOverlayActive(false);
+                        setOverlayPhase(null);
+                        setOverlayMap(null);
+                        setOverlayFromCardRect(null);
+                        setOverlayFromTextRect(null);
+                    }}
+                />
+            )}
             {/* Search Grid */}
             <div className="max-w-6xl mx-auto p-4">
                 <h1

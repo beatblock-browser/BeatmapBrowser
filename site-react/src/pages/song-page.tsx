@@ -10,11 +10,9 @@ import default_image from './../public/beatblocks.jpg';
 
 interface SongPageProps {
     skipEntranceAnimation?: boolean;
-    onClose?: () => void;
-    shouldFadeOut?: boolean;
 }
 
-export default function SongPage({ skipEntranceAnimation = false, onClose, shouldFadeOut = false }: SongPageProps) {
+export default function SongPage({ skipEntranceAnimation = false }: SongPageProps) {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const location = useLocation();
@@ -93,20 +91,6 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
         return () => clearInterval(interval);
     }, []);
 
-    // Handle fade out when requested
-    useEffect(() => {
-        if (shouldFadeOut && isVisible) {
-            setIsVisible(false);
-            // Notify parent after fade out completes
-            const fadeOutTimer = setTimeout(() => {
-                if (onClose) {
-                    onClose();
-                }
-            }, 300); // Match the fade out duration
-            
-            return () => clearTimeout(fadeOutTimer);
-        }
-    }, [shouldFadeOut, isVisible, onClose]);
 
     useEffect(() => {
         // If we have selectedMap from store, don't fetch
@@ -171,33 +155,25 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
     }, [jwt, selectedMap, fetchedMap]);
 
     const handleBack = () => {
-        // Always fade out first
+        // Fade out first
         setIsVisible(false);
         
-        // Then handle the actual back action after fade out completes
-        setTimeout(() => {
-            // Prefer router history back when we were opened with a background location
-            const hasBackground = (location.state as any)?.backgroundLocation;
-            if (hasBackground) {
-                // Let Home know to run reverse animation
-                window.dispatchEvent(new Event('song:closing'));
-                navigate(-1);
-                return;
-            }
+        // Prefer router history back when we were opened with a background location
+        const hasBackground = (location.state as any)?.backgroundLocation;
+        if (hasBackground) {
+            // Let Home know to run reverse animation, then navigate after animation completes
+            window.dispatchEvent(new CustomEvent('song:closing', { detail: { navigate: () => navigate(-1) } }));
+            return;
+        }
 
-            // Fallbacks
-            if (isOverlayMode) {
-                // Notify reverse animation as we close overlay
-                window.dispatchEvent(new Event('song:closing'));
-                if (onClose) {
-                    onClose();
-                } else {
-                    setSelectedMap(null);
-                }
-            } else {
-                navigate('/');
-            }
-        }, 300); // Wait for fade out to complete
+        // Fallbacks
+        if (isOverlayMode) {
+            // Notify reverse animation as we close overlay
+            window.dispatchEvent(new CustomEvent('song:closing', { detail: { navigate: () => {} } }));
+            setTimeout(() => setSelectedMap(null), 450);
+        } else {
+            setTimeout(() => navigate('/'), 300);
+        }
     };
 
     const handleUpvote = async () => {
@@ -319,8 +295,8 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
             )}
 
             <div
-                className={`absolute top-0 left-0 right-0 overflow-hidden transition-all duration-300 ease-in-out ${isVisible ? 'opacity-100' : 'opacity-0'} ${hasAnimatedCard ? 'hidden' : ''}`}
-                style={{ height: 'calc(100vw * 9 / 32)', maxHeight: '320px' }}
+                className={`absolute top-0 left-0 right-0 overflow-hidden transition-all duration-300 ease-in-out ${isVisible && !hasAnimatedCard ? 'opacity-100' : 'opacity-0'}`}
+                style={{ height: 'calc(100vw * 9 / 32)', maxHeight: '320px', pointerEvents: hasAnimatedCard ? 'none' : 'auto' }}
             >
                 <div className="absolute inset-0">
                     <img src={currentMap.image ? `${R2_PUBLIC_URL}/thumbs/${currentMap.id}.png` : default_image} alt={safeSong} className={`w-full h-full object-cover ${isDeleted ? 'grayscale-[80%] opacity-80' : ''}`} />
