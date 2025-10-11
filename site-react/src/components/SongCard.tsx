@@ -70,13 +70,13 @@ export default function SongCard({
     >
       <img src={imageSrc} alt={safeSong} className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute inset-0 card-overlay-gradient" />
-      <div ref={textRef} className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6">
+      <div ref={textRef} data-text-container className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6">
         <div className="flex-1 min-w-0">
           <h2 className="text-xl mb-1 line-clamp-1">{safeSong}</h2>
           <p className="text-sm">by {safeArtist}</p>
           <p className="text-sm">Charter: {safeCharter}</p>
           {bucketList.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div data-difficulty className="mt-2 flex flex-wrap gap-2">
               {bucketList.slice(0, 3).map((name) => (
                 <span key={name} className="px-2 py-0.5 text-[10px] font-['Press_Start_2P'] border border-white/60 bg-black/40 rounded-sm">
                   {name}
@@ -92,6 +92,7 @@ export default function SongCard({
         </div>
         {!hideActions && (
           <div
+            data-actions
             className={`absolute bottom-4 right-4 flex items-center gap-2 ease-in-out ${
               hideButtonsTransition ? "opacity-0 scale-90 transition-all duration-300" : "opacity-100 scale-100 transition-all duration-150"
             }`}

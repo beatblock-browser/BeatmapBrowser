@@ -536,6 +536,7 @@ impl Database for DatabaseBackend {
                AND song = ?1
                AND artist = ?2
                AND charter = ?3
+               AND deleted = 0
              LIMIT 1"
         );
         let stmt = self.db.prepare(&sql);

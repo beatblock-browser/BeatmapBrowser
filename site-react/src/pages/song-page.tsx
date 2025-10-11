@@ -230,6 +230,13 @@ export default function SongPage({ skipEntranceAnimation = false, onClose, shoul
             }
             // Reflect deleted state in UI
             setIsDeleted(true);
+            try {
+                // Notify home page to refresh search and optimistically hide this map
+                const deletedId = currentMap.id;
+                window.dispatchEvent(new CustomEvent('map:deleted', { detail: { id: deletedId } }));
+            } catch {}
+            // Navigate back to the song list (handles overlay/full page with fade-out)
+            handleBack();
         } catch {
             alert('Failed to delete.');
         }

@@ -68,6 +68,7 @@ export default function HomePage() {
     const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
     const textRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
     const originalCardPosition = useRef<{ [key: string]: DOMRect }>({});
+    const originalTextPosition = useRef<{ [key: string]: DOMRect }>({});
     const sentinelRef = useRef<HTMLDivElement | null>(null);
     const requestIdRef = useRef(0);
     // Guards for pagination to avoid duplicate requests
@@ -99,9 +100,9 @@ export default function HomePage() {
             firstPageLoadedRef.current = false;
             // Update the current filter immediately on reset
             currentFilterRef.current = filterKey;
-            // Do NOT clear results or counts to avoid UI flicker while searching
             // Reset paging lock because we're starting fresh
             pagingRef.current = false;
+            // Do not clear results; we'll dim the UI while refreshing to avoid stale flashes
         }
         startTransition(() => {
             setIsLoading(isInitial);
@@ -346,6 +347,25 @@ export default function HomePage() {
         setJwt(localStorage.getItem('jwt'));
     }, []);
 
+    // Refresh search after a map is deleted (from song page)
+    useEffect(() => {
+        const onDeleted = (evt: Event) => {
+            const anyEvt = evt as CustomEvent<{ id?: string }>;
+            const deletedId = anyEvt.detail?.id;
+            if (!deletedId) return;
+            // Optimistically remove from current results
+            startTransition(() => {
+                setResults(prev => prev.filter(m => m.id === deletedId ? false : true));
+            });
+            // Trigger a refresh for the current filters
+            setPage(0);
+            fetchPage(0, true);
+        };
+        window.addEventListener('map:deleted', onDeleted);
+        return () => window.removeEventListener('map:deleted', onDeleted);
+        // fetchPage is stable due to useCallback deps; setResults from context
+    }, [fetchPage, setResults]);
+
     // Handle body overflow when overlay is open
     useEffect(() => {
         // Create or update the style element for hiding scrollbars
@@ -422,28 +442,22 @@ export default function HomePage() {
                 
                 // Create a clone of the card for animation
                 const animatedCard = originalCardElement.cloneNode(true) as HTMLDivElement;
-                const animatedText = animatedCard.querySelector('[class*="absolute inset-0 flex"]') as HTMLDivElement;
+                const animatedText = animatedCard.querySelector('[data-text-container]') as HTMLDivElement;
                 
                 // Remove any refs and event listeners from the clone
                 animatedCard.removeAttribute('data-*');
                 animatedCard.onclick = null;
                 
                 // Hide buttons in the animated clone more aggressively
-                const allDivs = animatedCard.querySelectorAll('div');
-                let buttonsFound = 0;
-                allDivs.forEach(div => {
-                    const classes = div.className || '';
-                    if (classes.includes('bottom-4') && classes.includes('right-4')) {
-                        console.log('Found button container, hiding it');
-                        div.style.opacity = '0';
-                        div.style.transform = 'scale(0.9)';
-                        div.style.pointerEvents = 'none';
-                        buttonsFound++;
-                    }
-                });
+                const actionsEl = animatedCard.querySelector('[data-actions]') as HTMLDivElement | null;
+                if (actionsEl) {
+                    actionsEl.style.opacity = '0';
+                    actionsEl.style.transform = 'scale(0.9)';
+                    actionsEl.style.pointerEvents = 'none';
+                }
 
                 // Hide difficulty chips to match the banner layout (they don't appear on the song-page banner)
-                const difficultyContainers = animatedCard.querySelectorAll('div.mt-2');
+                const difficultyContainers = animatedCard.querySelectorAll('[data-difficulty]');
                 difficultyContainers.forEach((el) => {
                     (el as HTMLElement).style.display = 'none';
                 });
@@ -486,6 +500,7 @@ export default function HomePage() {
                 if (animatedText) {
                     animatedText.style.transformOrigin = 'left center';
                     animatedText.style.transition = 'transform 400ms ease-out';
+                    animatedText.style.willChange = 'transform, padding';
                     // Capture original paddings so we can compensate during inverse scaling
                     const cs = getComputedStyle(animatedText);
                     (animatedText as any).dataset.padLeftOriginal = cs.paddingLeft || '0px';
@@ -542,7 +557,7 @@ export default function HomePage() {
             const existingAnimatedCard = document.getElementById('animated-banner-card') as HTMLDivElement;
             
             if (existingAnimatedCard && originalRect) {
-                const animatedText = existingAnimatedCard.querySelector('[class*="absolute inset-0 flex"]') as HTMLDivElement;
+                const animatedTextOverlay = document.getElementById('animated-banner-text') as HTMLDivElement | null;
 
                 // Re-enable truncation immediately to avoid snapping as we shrink
                 existingAnimatedCard.classList.add('reclamp');
@@ -553,23 +568,23 @@ export default function HomePage() {
                 const bannerHeight = currentRect.height;
 
                 // Do not force width/height, preserve inset-0 for proper centering during reverse
-                if (animatedText) {
-                    animatedText.style.width = '';
-                    animatedText.style.height = '';
-                }
+                // Text overlay exists independently
 
                 // Start animation
                 requestAnimationFrame(() => {
                     existingAnimatedCard.style.transition = 'transform 400ms ease-out';
-                    if (animatedText) {
-                        animatedText.style.transition = 'transform 400ms ease-out';
-                    }
+                    if (animatedTextOverlay) animatedTextOverlay.style.transition = 'transform 400ms ease-out, width 400ms ease-out';
 
                     requestAnimationFrame(() => {
                         // Animate back to original position
                         existingAnimatedCard.style.transform = `translate(0px, 0px) scale(1, 1)`;
-                        if (animatedText) {
-                            animatedText.style.transform = `scale(1, 1)`;
+                        if (animatedTextOverlay) {
+                            const textRect = originalTextPosition.current[transitioningCard];
+                            if (textRect) {
+                                // Return overlay back to its original card text rect
+                                animatedTextOverlay.style.width = `${textRect.width}px`;
+                                animatedTextOverlay.style.transform = `translate(0px, 0px)`;
+                            }
                         }
 
                         // Fallback cleanup in case fade out handler doesn't complete properly
@@ -577,6 +592,10 @@ export default function HomePage() {
                             const remainingCard = document.getElementById('animated-banner-card');
                             if (remainingCard && remainingCard.parentNode) {
                                 remainingCard.parentNode.removeChild(remainingCard);
+                            }
+                            const remainingText = document.getElementById('animated-banner-text');
+                            if (remainingText && remainingText.parentNode) {
+                                remainingText.parentNode.removeChild(remainingText);
                             }
                         }, 450); // Slightly longer than animation to be safe
                     });
@@ -640,30 +659,19 @@ export default function HomePage() {
                     
                     animatedCard.style.transform = `translate(${-originalRect.left}px, ${-originalRect.top}px) scale(${scaleX}, ${scaleY})`;
                     
-                    // Update text scaling and centering; re-apply scaled paddings for consistency on resize
-                    const animatedText = animatedCard.querySelector('[class*="absolute inset-0 flex"]') as HTMLDivElement;
-                    if (animatedText) {
-                        const deltaY = (newBannerHeight - originalRect.height) / 2;
-                        const padLeftOriginal = parseFloat((animatedText as any).dataset.padLeftOriginal || '0') || 0;
-                        const padRightOriginal = parseFloat((animatedText as any).dataset.padRightOriginal || '0') || 0;
-                        const padTopOriginal = parseFloat((animatedText as any).dataset.padTopOriginal || '0') || 0;
-                        const padBottomOriginal = parseFloat((animatedText as any).dataset.padBottomOriginal || '0') || 0;
-                        animatedText.style.paddingLeft = `${padLeftOriginal * scaleX}px`;
-                        animatedText.style.paddingRight = `${padRightOriginal * scaleX}px`;
-                        animatedText.style.paddingTop = `${padTopOriginal * scaleY}px`;
-                        animatedText.style.paddingBottom = `${padBottomOriginal * scaleY}px`;
-                        animatedText.style.transform = `translate(0px, ${deltaY}px) scale(${1/scaleX}, ${1/scaleY})`;
-                        animatedText.style.width = '';
-                        animatedText.style.height = '';
-
-                        // Measure and correct horizontal alignment to match banner padding
-                        const targetLeftPadding = parseFloat(getComputedStyle(animatedText).paddingLeft || '24') || 24;
-                        const textRect = animatedText.getBoundingClientRect();
-                        const currentLeft = textRect.left;
-                        const bannerLeft = 0;
-                        const desiredLeft = bannerLeft + targetLeftPadding;
-                        const correction = desiredLeft - currentLeft;
-                        animatedText.style.transform = `translate(${correction}px, ${deltaY}px) scale(${1/scaleX}, ${1/scaleY})`;
+                    // Update text overlay position/width on resize
+                    const animatedTextOverlay = document.getElementById('animated-banner-text') as HTMLDivElement | null;
+                    const origTextRect = originalTextPosition.current[transitioningCard];
+                    if (animatedTextOverlay && origTextRect) {
+                        const paddingCss = getComputedStyle(animatedTextOverlay).paddingLeft || '24px';
+                        const pad = parseFloat(paddingCss) || 24;
+                        const targetLeft = 0 + pad;
+                        const targetTop = (newBannerHeight - origTextRect.height) / 2;
+                        const targetWidth = Math.max(0, newViewportWidth - pad * 2);
+                        animatedTextOverlay.style.width = `${targetWidth}px`;
+                        const dx = targetLeft - origTextRect.left;
+                        const dy = targetTop - origTextRect.top;
+                        animatedTextOverlay.style.transform = `translate(${dx}px, ${dy}px)`;
                     }
                 }
             }
@@ -1016,7 +1024,7 @@ export default function HomePage() {
                     </div>
                 )}
                 {!error && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${isRefreshing ? 'opacity-60 pointer-events-none transition-opacity' : ''}`}>
                         {!hasLoadedOnceRef.current ? (
                             <>
                                 {Array.from({ length: 6 }).map((_, i) => (
