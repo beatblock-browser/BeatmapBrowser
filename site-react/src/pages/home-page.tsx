@@ -89,6 +89,25 @@ export default function HomePage() {
     // UI: filter layout via CSS breakpoints (no JS measurement to avoid flicker)
     const [showFilters, setShowFilters] = useState(false);
 
+    // Utility: get element rect without any CSS transforms (hover translate/scale, etc.)
+    const getUntransformedRect = useCallback((el: HTMLElement): DOMRect => {
+        // Cache previous inline styles
+        const prevTransform = el.style.transform;
+        const prevTransition = el.style.transition;
+        const prevWillChange = el.style.willChange;
+        // Disable transitions and transforms inline (overrides class-based transforms)
+        el.style.transition = 'none';
+        el.style.transform = 'none';
+        el.style.willChange = 'auto';
+        // Measure true, untransformed rect
+        const rect = el.getBoundingClientRect();
+        // Restore inline styles
+        el.style.transform = prevTransform;
+        el.style.transition = prevTransition;
+        el.style.willChange = prevWillChange;
+        return rect;
+    }, []);
+
     // Fetch a page from the backend worker with filters applied
     const fetchPage = useCallback(async (pageToLoad: number, reset: boolean = false) => {
         const reqId = ++requestIdRef.current;
@@ -451,9 +470,9 @@ export default function HomePage() {
         // Measure rects
         const cardEl = cardRefs.current[map.id];
         if (!cardEl) return;
-        const rect = cardEl.getBoundingClientRect();
+        const rect = getUntransformedRect(cardEl);
         const textEl = cardEl.querySelector('[data-text-container]') as HTMLDivElement | null;
-        const textRect = textEl ? textEl.getBoundingClientRect() : null;
+        const textRect = textEl ? getUntransformedRect(textEl) : null;
         originalCardPosition.current[map.id] = rect;
         if (textRect) originalTextPosition.current[map.id] = textRect;
 
@@ -478,10 +497,10 @@ export default function HomePage() {
 
       // If the original card is in view, run a reverse overlay back to it
       if (cardEl && transitioningCard === id) {
-        const rect = originalCardPosition.current[id] || cardEl.getBoundingClientRect();
+        // Always re-measure current rects to avoid stale or active/hover-scaled sizes
+        const rect = getUntransformedRect(cardEl);
         const textEl = cardEl.querySelector('[data-text-container]') as HTMLDivElement | null;
-        const textRect =
-          originalTextPosition.current[id] || (textEl ? textEl.getBoundingClientRect() : null);
+        const textRect = textEl ? getUntransformedRect(textEl) : null;
 
         setIsReverseAnimation(true);
 

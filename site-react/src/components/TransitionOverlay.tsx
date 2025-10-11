@@ -114,18 +114,19 @@ export default function TransitionOverlay({ map, fromCardRect, fromTextRect, pha
         }
 
         requestAnimationFrame(() => {
+          // Use the true, untransformed card rect for exact alignment
           const scaleX = fromCardRect.width / bannerW;
           const scaleY = fromCardRect.height / bannerH;
           const tx = fromCardRect.left;
           const ty = fromCardRect.top;
-          cardEl.style.transform = `translate(${tx}px, ${ty}px) scale(${scaleX}, ${scaleY})`;
+          cardEl.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${scaleX}, ${scaleY})`;
 
           if (textEl) {
             const tr = fromTextRect || fromCardRect;
             const currentTop = parseFloat(textEl.style.top || '0');
-            const dx = tr.left;
+            const dx = tr.left; // from left edge
             const dy = tr.top - currentTop;
-            textEl.style.transform = `translate(${dx}px, ${dy}px)`;
+            textEl.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
             textEl.style.width = `${tr.width}px`;
           }
         });
@@ -168,7 +169,12 @@ export default function TransitionOverlay({ map, fromCardRect, fromTextRect, pha
 
   const overlay = (
     <>
-      <div ref={cardRef} id="animated-banner-card" style={{ pointerEvents: 'none' }}>
+      <div
+        ref={cardRef}
+        id="animated-banner-card"
+        className="relative overflow-hidden bg-white border border-black rounded-lg"
+        style={{ pointerEvents: 'none' }}
+      >
         <div className="absolute inset-0">
           <img src={imgSrc} alt={safeSong} className="w-full h-full object-cover" />
         </div>
