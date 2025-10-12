@@ -1,50 +1,29 @@
 import React, { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { BeatMap } from "@/schema";
 import { useStore } from "@/lib/store";
 import { apiFetch, apiFetchAuth, R2_PUBLIC_URL } from "@/lib/api";
 import { sanitizeText } from "@/lib/sanitize";
+import { getCachedMap, setCachedMap } from "@/lib/mapCache";
 // @ts-ignore
 import default_image from './../public/beatblocks.jpg';
 
-interface SongPageProps {
-    skipEntranceAnimation?: boolean;
-}
-
-export default function SongPage({ skipEntranceAnimation = false }: SongPageProps) {
+export default function SongPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const location = useLocation();
-    const { selectedMap, setSelectedMap, upvoteMap } = useStore();
-    const [fetchedMap, setFetchedMap] = useState<BeatMap | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [isVisible, setIsVisible] = useState(false);
-    const [hasAnimatedCard, setHasAnimatedCard] = useState(false);
-    const [isBackVisible, setIsBackVisible] = useState(false);
-    const [shouldRenderBack, setShouldRenderBack] = useState(false);
+    const { upvoteMap } = useStore();
+    const [fetchedMap, setFetchedMap] = useState<BeatMap | null>(() => id ? getCachedMap(id) : null);
     const [jwt, setJwt] = useState<string | null>(null);
     const [showUpdatedBanner, setShowUpdatedBanner] = useState<boolean>(() => Boolean((location.state as any)?.updated));
     const [isDeleted, setIsDeleted] = useState<boolean>(false);
     const [isModerator, setIsModerator] = useState<boolean>(false);
     const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
-    // Determine which map to use and whether we're in overlay mode
-    const isOverlayMode = !!selectedMap;
-    const currentMap = selectedMap || fetchedMap;
+    const currentMap = fetchedMap;
     const safeSong = currentMap ? sanitizeText(currentMap.song, 200) : "";
     const safeArtist = currentMap ? sanitizeText(currentMap.artist, 200) : "";
     const safeCharter = currentMap ? sanitizeText(currentMap.charter, 200) : "";
-
-    useEffect(() => {
-        // Fade in the song page after a shorter delay
-        const fadeInTimer = setTimeout(() => {
-            setIsVisible(true);
-        }, skipEntranceAnimation ? 100 : 50); // Much shorter delay
-        
-        return () => clearTimeout(fadeInTimer);
-    }, [skipEntranceAnimation]);
 
     useEffect(() => {
         if ((location.state as any)?.updated) {
@@ -61,81 +40,32 @@ export default function SongPage({ skipEntranceAnimation = false }: SongPageProp
         return () => window.removeEventListener('storage', onStorage);
     }, []);
 
-    // Delay back button appearance explicitly via state to ensure consistent timing
-    useEffect(() => {
-        if (isVisible) {
-            const t = setTimeout(() => {
-                setShouldRenderBack(true);
-                // ensure first paint at opacity-0, then animate to 1
-                requestAnimationFrame(() => setIsBackVisible(true));
-            }, 500);
-            return () => clearTimeout(t);
-        }
-        setIsBackVisible(false);
-        setShouldRenderBack(false);
-    }, [isVisible]);
-
-    // Monitor for animated cards
-    useEffect(() => {
-        const checkAnimatedCard = () => {
-            const animatedCard = document.getElementById('animated-banner-card');
-            setHasAnimatedCard(!!animatedCard);
-        };
-        
-        // Check immediately
-        checkAnimatedCard();
-        
-        // Set up an interval to check periodically
-        const interval = setInterval(checkAnimatedCard, 100);
-        
-        return () => clearInterval(interval);
-    }, []);
-
 
     useEffect(() => {
-        // If we have selectedMap from store, don't fetch
-        if (selectedMap) return;
-
-        // If we have URL param but no selectedMap, fetch the data
-        if (id && !selectedMap) {
+        if (id) {
             const fetchSong = async () => {
-                setIsLoading(true);
-                setError(null);
-                
                 try {
                     const response = await apiFetch(`/api/map/${id}`);
-
                     if (!response.ok) {
                         if (response.status === 404) {
-                            // If opened as a full page (no overlay), route to /404
-                            if (!selectedMap) {
-                                navigate('/404', { replace: true });
-                                return;
-                            }
-                            setError("Song not found");
-                        } else {
-                            throw new Error(`HTTP ${response.status}`);
+                            navigate('/404', { replace: true });
+                            return;
                         }
                         return;
                     }
                     const data: BeatMap = await response.json();
+                    setCachedMap(id, data);
                     setFetchedMap(data);
-                } catch (e: any) {
-                    setError(e.message || "Failed to load song. Please try again later.");
-                } finally {
-                    setIsLoading(false);
-                }
+                } catch {}
             };
-
             fetchSong();
         }
-    }, [id, selectedMap]);
+    }, [id, navigate]);
 
-    // Fetch moderation status for this map when signed in
     useEffect(() => {
         const doFetch = async () => {
             if (!jwt) { setIsDeleted(false); setIsModerator(false); setIsAdmin(false); return; }
-            const map = selectedMap || fetchedMap;
+            const map = fetchedMap;
             if (!map) return;
             try {
                 const res = await apiFetchAuth(`/api/moderation/status`, {
@@ -152,41 +82,16 @@ export default function SongPage({ skipEntranceAnimation = false }: SongPageProp
             } catch {}
         };
         doFetch();
-    }, [jwt, selectedMap, fetchedMap]);
+    }, [jwt, fetchedMap]);
 
     const handleBack = () => {
-        // Fade out first
-        setIsVisible(false);
-        
-        // Prefer router history back when we were opened with a background location
-        const hasBackground = (location.state as any)?.backgroundLocation;
-        if (hasBackground) {
-            // Let Home know to run reverse animation, then navigate after animation completes
-            window.dispatchEvent(new CustomEvent('song:closing', { detail: { navigate: () => navigate(-1) } }));
-            return;
-        }
-
-        // Fallbacks
-        if (isOverlayMode) {
-            // Notify reverse animation as we close overlay
-            window.dispatchEvent(new CustomEvent('song:closing', { detail: { navigate: () => {} } }));
-            setTimeout(() => setSelectedMap(null), 450);
-        } else {
-            setTimeout(() => navigate('/'), 300);
-        }
+        navigate('/');
     };
 
     const handleUpvote = async () => {
         if (!currentMap) return;
         await upvoteMap(currentMap.id);
-        
-        // Update the appropriate state
-        if (isOverlayMode) {
-            // Store will update selectedMap automatically
-        } else {
-            // Update local fetchedMap state
-            setFetchedMap(prev => prev ? { ...prev, upvotes: prev.upvotes + 1 } : null);
-        }
+        setFetchedMap(prev => prev ? { ...prev, upvotes: prev.upvotes + 1 } : null);
     };
 
     const handleDelete = async () => {
@@ -239,24 +144,11 @@ export default function SongPage({ skipEntranceAnimation = false }: SongPageProp
         }
     };
 
-    if (isLoading) {
+    if (!currentMap) {
         return (
-            <div className="fixed inset-0 z-10 bg-white flex items-center justify-center">
-                <div className="flex flex-col items-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
-                    <div className="text-center font-['Press_Start_2P']">Loading song...</div>
-                </div>
-            </div>
-        );
-    }
-
-    if (error || !currentMap) {
-        return (
-            <div className="fixed inset-0 z-10 bg-white flex items-center justify-center">
+            <div className="min-h-[calc(100vh-56px)] bg-white flex items-center justify-center">
                 <div className="text-center">
-                    <h1 className="text-2xl font-['Press_Start_2P'] mb-4">
-                        {error || "Song not found"}
-                    </h1>
+                    <h1 className="text-2xl font-['Press_Start_2P'] mb-4">Song not found</h1>
                     <button
                         onClick={handleBack}
                         className="px-4 py-2 bg-black text-white font-['Press_Start_2P'] text-sm hover:bg-gray-800 transition-colors"
@@ -269,56 +161,41 @@ export default function SongPage({ skipEntranceAnimation = false }: SongPageProp
     }
 
     return (
-        <div className={`fixed inset-0 z-[40] transition-opacity duration-300 ease-in-out ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
-            {(((location.state as any)?.backgroundLocation) || isOverlayMode) && shouldRenderBack && createPortal(
-                (
+        <div className="min-h-[calc(100vh-56px)] bg-white">
+            {showUpdatedBanner && (
+                <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-green-600 text-white rounded shadow font-['Press_Start_2P'] text-xs">
+                    Updated your existing upload
+                </div>
+            )}
+
+            <div className="max-w-6xl mx-auto p-4">
+                <div className="relative overflow-hidden rounded-lg border border-black mb-4" style={{ height: '320px' }}>
                     <button
                         onClick={handleBack}
-                        className={`fixed top-4 left-4 z-[70] text-white p-2 bg-black/30 rounded-full backdrop-blur-sm hover:scale-110 active:scale-90 transition-all duration-700 ease-out ${isBackVisible ? 'opacity-100 pointer-events-auto scale-100' : 'opacity-0 pointer-events-none scale-90'}`}
-                        style={{ willChange: 'opacity, transform' }}
-                        aria-label="Back"
+                        className="absolute top-4 left-4 z-50 text-white p-2 bg-black/30 rounded-full backdrop-blur-sm hover:scale-110 active:scale-90 transition-all"
+                        aria-label="Back to search"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                         </svg>
                     </button>
-                ),
-                document.body
-            )}
-
-            <div className={`absolute inset-0 bg-white transition-all duration-300 ease-in-out ${isVisible ? 'opacity-100' : 'opacity-0'}`} />
-
-            {showUpdatedBanner && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[80] px-4 py-2 bg-green-600 text-white rounded shadow font-['Press_Start_2P'] text-xs">
-                    Updated your existing upload
-                </div>
-            )}
-
-            <div
-                className={`absolute top-0 left-0 right-0 overflow-hidden transition-all duration-300 ease-in-out ${isVisible && !hasAnimatedCard ? 'opacity-100' : 'opacity-0'}`}
-                style={{ height: 'calc(100vw * 9 / 32)', maxHeight: '320px', pointerEvents: hasAnimatedCard ? 'none' : 'auto' }}
-            >
-                <div className="absolute inset-0">
-                    <img src={currentMap.image ? `${R2_PUBLIC_URL}/thumbs/${currentMap.id}.png` : default_image} alt={safeSong} className={`w-full h-full object-cover ${isDeleted ? 'grayscale-[80%] opacity-80' : ''}`} />
-                </div>
-                <div className="absolute inset-0 card-overlay-gradient" />
-                <div className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6">
-                    <div className="flex-1 min-w-0">
-                        <h1 className="text-xl mb-1">{safeSong}</h1>
-                        <p className="text-sm">by {safeArtist}</p>
-                        <p className="text-sm">Charter: {safeCharter}</p>
-                        {isDeleted && (isModerator || isAdmin) && (
-                            <p className="mt-2 inline-block px-2 py-1 text-[10px] bg-yellow-600 text-white">Deleted</p>
-                        )}
+                    <div className="absolute inset-0">
+                        <img src={currentMap.image ? `${R2_PUBLIC_URL}/thumbs/${currentMap.id}.png` : default_image} alt={safeSong} className={`w-full h-full object-cover ${isDeleted ? 'grayscale-[80%] opacity-80' : ''}`} />
+                    </div>
+                    <div className="absolute inset-0 card-overlay-gradient" />
+                    <div className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6">
+                        <div className="flex-1 min-w-0">
+                            <h1 className="text-xl mb-1">{safeSong}</h1>
+                            <p className="text-sm">by {safeArtist}</p>
+                            <p className="text-sm">Charter: {safeCharter}</p>
+                            {isDeleted && (isModerator || isAdmin) && (
+                                <p className="mt-2 inline-block px-2 py-1 text-[10px] bg-yellow-600 text-white">Deleted</p>
+                            )}
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div
-                className={`absolute top-0 left-0 right-0 bottom-0 overflow-y-auto transition-all duration-300 ease-in-out ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-                style={{ paddingTop: `min(calc(100vw * 9 / 32), 320px)` }}
-            >
-                <div className="max-w-6xl mx-auto p-4 pb-2">
+                <div className="pb-2">
                     <div className="pixel-panel rounded-md bg-white p-4">
                         <div className="flex gap-6">
                             <div className="w-64 flex-shrink-0">

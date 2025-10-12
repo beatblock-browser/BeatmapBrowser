@@ -10,11 +10,9 @@ type Props = {
   className: string;
   onClick?: () => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
-  containerRef?: (el: HTMLDivElement | null) => void;
-  textRef?: (el: HTMLDivElement | null) => void;
+  onMouseEnter?: () => void;
   jwt?: string | null;
-  hideActions?: boolean; // when true, hide buttons and upvote panel
-  hideButtonsTransition?: boolean; // mirrors hideButtons === map.id logic for opacity/scale transition
+  hideActions?: boolean;
   imageOverrideUrl?: string | null;
   clickable?: boolean;
 };
@@ -24,11 +22,9 @@ export default function SongCard({
   className,
   onClick,
   onKeyDown,
-  containerRef,
-  textRef,
+  onMouseEnter,
   jwt,
   hideActions = false,
-  hideButtonsTransition = false,
   imageOverrideUrl = null,
   clickable = true,
 }: Props) {
@@ -61,16 +57,16 @@ export default function SongCard({
 
   return (
     <div
-      ref={containerRef}
       onClick={clickable ? onClick : undefined}
       onKeyDown={clickable ? onKeyDown : undefined}
+      onMouseEnter={onMouseEnter}
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : -1}
       className={className}
     >
       <img src={imageSrc} alt={safeSong} className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute inset-0 card-overlay-gradient" />
-      <div ref={textRef} data-text-container className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6">
+      <div className="absolute inset-0 flex flex-row items-center font-['Press_Start_2P'] text-white p-6">
         <div className="flex-1 min-w-0">
           <h2 className="text-xl mb-1 line-clamp-1">{safeSong}</h2>
           <p className="text-sm">by {safeArtist}</p>
@@ -91,12 +87,7 @@ export default function SongCard({
           )}
         </div>
         {!hideActions && (
-          <div
-            data-actions
-            className={`absolute bottom-4 right-4 flex items-center gap-2 ease-in-out ${
-              hideButtonsTransition ? "opacity-0 scale-90 transition-all duration-300" : "opacity-100 scale-100 transition-all duration-150"
-            }`}
-          >
+          <div className="absolute bottom-4 right-4 flex items-center gap-2">
             <div className="group relative">
               <a
                 href={`${baseZip}/maps/${map.id}.zip`}

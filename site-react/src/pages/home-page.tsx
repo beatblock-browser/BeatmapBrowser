@@ -2,10 +2,9 @@ import React, { useEffect, useState, useRef, useCallback, useMemo, startTransiti
 import { useNavigate, useLocation } from "react-router-dom";
 import { BeatMap } from "@/schema";
 import { useSearchCache } from "@/context/SearchCache";
-import { useStore } from "@/lib/store";
 import { apiFetch } from "@/lib/api";
 import SongCard from "@/components/SongCard";
-import TransitionOverlay from "@/components/TransitionOverlay";
+import { setCachedMap } from "@/lib/mapCache";
 
 // Preferred difficulty order; also used to seed the available list so all appear
 const DIFFICULTY_ORDER: string[] = [
@@ -40,20 +39,8 @@ export default function HomePage() {
     const navigate = useNavigate();
     const location = useLocation();
     const { results, setResults } = useSearchCache();
-    const { selectedMap, setSelectedMap } = useStore();
     const [error, setError] = useState<string | null>(null);
     const [jwt, setJwt] = useState<string | null>(null);
-    const [titleVisible, setTitleVisible] = useState(true);
-    const [transitioningCard, setTransitioningCard] = useState<string | null>(null);
-    const [cardTransformed, setCardTransformed] = useState(false);
-    const [isReverseAnimation, setIsReverseAnimation] = useState(false);
-    const [hideButtons, setHideButtons] = useState<string | null>(null);
-    // Overlay FLIP animation state
-    const [overlayActive, setOverlayActive] = useState(false);
-    const [overlayPhase, setOverlayPhase] = useState<"forward" | "reverse" | null>(null);
-    const [overlayMap, setOverlayMap] = useState<BeatMap | null>(null);
-    const [overlayFromCardRect, setOverlayFromCardRect] = useState<DOMRect | null>(null);
-    const [overlayFromTextRect, setOverlayFromTextRect] = useState<DOMRect | null>(null);
     // Search and filter state
     const [query, setQuery] = useState("");
     const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -70,10 +57,6 @@ export default function HomePage() {
         return [...DIFFICULTY_ORDER];
     }, []);
     const [totalCount, setTotalCount] = useState<number>(0);
-    const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-    const textRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-    const originalCardPosition = useRef<{ [key: string]: DOMRect }>({});
-    const originalTextPosition = useRef<{ [key: string]: DOMRect }>({});
     const sentinelRef = useRef<HTMLDivElement | null>(null);
     const requestIdRef = useRef(0);
     // Guards for pagination to avoid duplicate requests
@@ -86,27 +69,7 @@ export default function HomePage() {
     // Debounced empty-state to avoid flicker
     const [showEmpty, setShowEmpty] = useState(false);
     const emptyTimerRef = useRef<number | null>(null);
-    // UI: filter layout via CSS breakpoints (no JS measurement to avoid flicker)
     const [showFilters, setShowFilters] = useState(false);
-
-    // Utility: get element rect without any CSS transforms (hover translate/scale, etc.)
-    const getUntransformedRect = useCallback((el: HTMLElement): DOMRect => {
-        // Cache previous inline styles
-        const prevTransform = el.style.transform;
-        const prevTransition = el.style.transition;
-        const prevWillChange = el.style.willChange;
-        // Disable transitions and transforms inline (overrides class-based transforms)
-        el.style.transition = 'none';
-        el.style.transform = 'none';
-        el.style.willChange = 'auto';
-        // Measure true, untransformed rect
-        const rect = el.getBoundingClientRect();
-        // Restore inline styles
-        el.style.transform = prevTransform;
-        el.style.transition = prevTransition;
-        el.style.willChange = prevWillChange;
-        return rect;
-    }, []);
 
     // Fetch a page from the backend worker with filters applied
     const fetchPage = useCallback(async (pageToLoad: number, reset: boolean = false) => {
@@ -177,12 +140,14 @@ export default function HomePage() {
             let cachedResults: BeatMap[] = [];
             if (reset) {
                 const next = (data.results || []);
+                next.forEach(map => setCachedMap(map.id, map));
                 startTransition(() => setResults(next));
                 cachedResults = next;
             } else {
                 startTransition(() => {
                     setResults(prev => {
                         const next = [...prev, ...(data.results || [])];
+                        (data.results || []).forEach(map => setCachedMap(map.id, map));
                         cachedResults = next;
                         return next;
                     });
@@ -390,170 +355,24 @@ export default function HomePage() {
         // fetchPage is stable due to useCallback deps; setResults from context
     }, [fetchPage, setResults]);
 
-    // Handle body overflow when overlay is open
-    useEffect(() => {
-        // Create or update the style element for hiding scrollbars
-        let styleElement = document.getElementById('hide-scrollbar-style') as HTMLStyleElement;
-
-        if (selectedMap) {
-            // Compute scrollbar width and pad body to avoid layout shift
-            const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-            if (scrollbarWidth > 0) {
-                document.body.style.paddingRight = `${scrollbarWidth}px`;
-            }
-
-            document.body.classList.add('no-scrollbar');
-            document.body.style.overflow = 'hidden';
-            document.body.style.scrollbarWidth = 'none'; // Firefox
-            (document.body.style as any).msOverflowStyle = 'none'; // IE
-
-            // Create style element to forcefully hide webkit scrollbars
-            if (!styleElement) {
-                styleElement = document.createElement('style');
-                styleElement.id = 'hide-scrollbar-style';
-                document.head.appendChild(styleElement);
-            }
-
-            styleElement.textContent = `
-                html::-webkit-scrollbar, body::-webkit-scrollbar {
-                    display: none !important;
-                    width: 0 !important;
-                    height: 0 !important;
-                }
-                html, body {
-                    scrollbar-width: none !important;
-                    -ms-overflow-style: none !important;
-                }
-            `;
-        } else {
-            document.body.classList.remove('no-scrollbar');
-            document.body.style.overflow = '';
-            document.body.style.scrollbarWidth = 'thin'; // Firefox
-            (document.body.style as any).msOverflowStyle = ''; // IE
-            document.body.style.paddingRight = '';
-
-            // Remove the hide scrollbar style
-            if (styleElement) {
-                styleElement.remove();
-            }
-        }
-
-        // Cleanup function to restore scroll when component unmounts
-        return () => {
-            document.body.classList.remove('no-scrollbar');
-            document.body.style.overflow = '';
-            document.body.style.scrollbarWidth = 'thin';
-            (document.body.style as any).msOverflowStyle = '';
-            document.body.style.paddingRight = '';
-
-            const cleanupStyleElement = document.getElementById('hide-scrollbar-style');
-            if (cleanupStyleElement) {
-                cleanupStyleElement.remove();
-            }
-        };
-    }, [selectedMap]);
-
-    // Handle card transition animation (handled by TransitionOverlay component)
-    useEffect(() => {
-        // no-op
-    }, [transitioningCard, selectedMap, isReverseAnimation, results]);
-
-    // Reverse is handled by starting a reverse overlay when closing
-    useEffect(() => {}, [isReverseAnimation, transitioningCard, results]);
-
-
-    // TransitionOverlay handles resize internally
-    useEffect(() => {}, [transitioningCard, cardTransformed, isReverseAnimation]);
 
     const handleCardClick = (map: BeatMap) => {
-        if (overlayActive || isReverseAnimation) return; // Prevent re-entry during animation
-        // Measure rects
-        const cardEl = cardRefs.current[map.id];
-        if (!cardEl) return;
-        const rect = getUntransformedRect(cardEl);
-        const textEl = cardEl.querySelector('[data-text-container]') as HTMLDivElement | null;
-        const textRect = textEl ? getUntransformedRect(textEl) : null;
-        originalCardPosition.current[map.id] = rect;
-        if (textRect) originalTextPosition.current[map.id] = textRect;
-
-        // Start overlay forward animation
-        setOverlayMap(map);
-        setOverlayFromCardRect(rect);
-        setOverlayFromTextRect(textRect);
-        setOverlayPhase('forward');
-        setOverlayActive(true);
-        setTransitioningCard(map.id);
-        setHideButtons(map.id);
-
-        // Navigate and set store selection while animation runs
-        setSelectedMap(map);
-        navigate(`/song/${map.id}`, { state: { backgroundLocation: location } });
+        navigate(`/song/${map.id}`);
     };
 
-    const handleCloseSongPage = useCallback(() => {
-      if (!selectedMap) return;
-      const id = selectedMap.id;
-      const cardEl = cardRefs.current[id];
-
-      // If the original card is in view, run a reverse overlay back to it
-      if (cardEl && transitioningCard === id) {
-        // Always re-measure current rects to avoid stale or active/hover-scaled sizes
-        const rect = getUntransformedRect(cardEl);
-        const textEl = cardEl.querySelector('[data-text-container]') as HTMLDivElement | null;
-        const textRect = textEl ? getUntransformedRect(textEl) : null;
-
-        setIsReverseAnimation(true);
-
-        // Start overlay animation immediately (SongPage will fade out simultaneously)
-        setOverlayMap(selectedMap);
-        setOverlayFromCardRect(rect);
-        setOverlayFromTextRect(textRect);
-        setOverlayPhase('reverse');
-        setOverlayActive(true);
-        return;
-      }
-
-      // Fallback for direct URL access (no visible card to return to)
-      // Just let SongPage fade out naturally
-    }, [selectedMap, transitioningCard, setSelectedMap]);
-
-
-    // Listen for song closing triggered from SongPage (router back)
-    useEffect(() => {
-        const listener = (evt: Event) => {
-            const customEvt = evt as CustomEvent<{ navigate?: () => void }>;
-            const navigateCallback = customEvt.detail?.navigate;
-            
-            // Mirror clicking the back button overlay
-            handleCloseSongPage();
-            
-            // Navigate after overlay animation completes
-            if (navigateCallback) {
-                setTimeout(() => navigateCallback(), 450);
+    const handleCardHover = useCallback(async (mapId: string) => {
+        try {
+            const response = await apiFetch(`/api/map/${mapId}`);
+            if (response.ok) {
+                const data: BeatMap = await response.json();
+                setCachedMap(mapId, data);
             }
-        };
-        window.addEventListener('song:closing', listener as EventListener);
-        return () => window.removeEventListener('song:closing', listener as EventListener);
-    }, [handleCloseSongPage]);
+        } catch {}
+    }, []);
 
-    const getCardClassName = (mapId: string) => {
-        const baseClass = "block w-full aspect-[32/9] border border-black cursor-pointer overflow-hidden relative text-left bg-white rounded-lg";
-        const shadowClass = "shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]";
-        
-        // Hide the transitioning card during both forward and reverse animations (clone handles the animation)
-        if (transitioningCard === mapId) {
-            return `${baseClass} transform-gpu invisible`;
-        }
-        
-        // Hide other cards during forward animation only
-        if (transitioningCard && transitioningCard !== mapId && !isReverseAnimation) {
-            return `${baseClass} ${shadowClass} opacity-0 transition-opacity duration-200`;
-        }
-        
-        return `${baseClass} ${shadowClass} transition-all duration-100 hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:scale-[1.02] active:scale-[0.98]`;
+    const getCardClassName = () => {
+        return "block w-full aspect-[32/9] border border-black cursor-pointer overflow-hidden relative text-left bg-white rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all duration-100 hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:scale-[1.02] active:scale-[0.98]";
     };
-
-    
 
     const toggleDifficulty = (name: string) => {
         const normalized = normalizeDifficulty(name);
@@ -579,11 +398,10 @@ export default function HomePage() {
         const maybeLoadMore = () => {
             if (!hasMore) return;
             if (isLoading || loadingMore || isRefreshing) return;
-            if (transitioningCard || isReverseAnimation) return;
             if (pagingRef.current) return;
-            if (!firstPageLoadedRef.current) return; // wait for initial page to complete
+            if (!firstPageLoadedRef.current) return;
             const now = Date.now();
-            if (now - lastLoadAtRef.current < 500) return; // cooldown 500ms
+            if (now - lastLoadAtRef.current < 500) return;
             setPage((prev) => {
                 const next = prev + 1;
                 pagingRef.current = true;
@@ -621,7 +439,7 @@ export default function HomePage() {
         return () => {
             observer.disconnect();
         };
-    }, [hasMore, isLoading, loadingMore, isRefreshing, fetchPage, transitioningCard, isReverseAnimation]);
+    }, [hasMore, isLoading, loadingMore, isRefreshing, fetchPage]);
 
     // Release pagination lock when network states settle
     useEffect(() => {
@@ -631,45 +449,9 @@ export default function HomePage() {
     }, [isLoading, loadingMore, isRefreshing]);
 
     return (
-        <div className="relative min-h-screen">
-            {/* Transition overlay for robust FLIP animation */}
-            {overlayActive && overlayMap && overlayFromCardRect && overlayPhase && (
-                <TransitionOverlay
-                    map={overlayMap}
-                    fromCardRect={overlayFromCardRect}
-                    fromTextRect={overlayFromTextRect}
-                    phase={overlayPhase}
-                    onDone={() => {
-                        if (overlayPhase === 'forward') {
-                            setCardTransformed(true);
-                        } else {
-                            // reverse cleanup
-                            setTransitioningCard(null);
-                            setIsReverseAnimation(false);
-                            setCardTransformed(false);
-                            setSelectedMap(null);
-                            setHideButtons(null);
-                        }
-                        // Clean up overlay state
-                        setOverlayActive(false);
-                        setOverlayPhase(null);
-                        setOverlayMap(null);
-                        setOverlayFromCardRect(null);
-                        setOverlayFromTextRect(null);
-                    }}
-                />
-            )}
-            {/* Search Grid */}
+        <div className="relative min-h-[calc(100vh-56px)]">
             <div className="max-w-6xl mx-auto p-4">
-                <h1
-                    className={`text-2xl mb-6 font-['Press_Start_2P'] pixel-title tracking-wide text-center transform transition-all duration-300 ${
-                        titleVisible ? 'translate-y-0 opacity-100' : '-translate-y-5 opacity-100'
-                    } ${transitioningCard && !isReverseAnimation ? 'opacity-0' : ''}`}
-                >
-                    Beatmap Browser
-                </h1>
-                {/* Pixel-styled search with filters: search on its own line, filters below */}
-                <div className={`sticky top-0 z-20 ${transitioningCard && !isReverseAnimation ? 'opacity-0 pointer-events-none' : 'opacity-100'} transition-opacity mb-6`}>
+                <div className="sticky top-0 z-20 mb-6">
                     <div className="pixel-panel rounded-md bg-white/95 backdrop-blur-sm">
                         <div className="max-w-6xl mx-auto px-4 pt-3 pb-2">
                             {/* Row 1: Search */}
@@ -844,7 +626,7 @@ export default function HomePage() {
                                   <SongCard
                                     key={map.id}
                                     map={map}
-                                    className={getCardClassName(map.id)}
+                                    className={getCardClassName()}
                                     onClick={() => handleCardClick(map)}
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter' || e.key === ' ') {
@@ -852,10 +634,8 @@ export default function HomePage() {
                                         handleCardClick(map);
                                       }
                                     }}
-                                    containerRef={(el) => { cardRefs.current[map.id] = el; }}
-                                    textRef={(el) => { textRefs.current[map.id] = el; }}
+                                    onMouseEnter={() => handleCardHover(map.id)}
                                     jwt={jwt}
-                                    hideButtonsTransition={hideButtons === map.id}
                                   />
                                 ))}
                             </>
